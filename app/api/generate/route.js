@@ -1,0 +1,284 @@
+import Anthropic from "@anthropic-ai/sdk";
+import { readFile } from "fs/promises";
+import path from "path";
+import {
+  buildLessonsContext,
+  detectGenre,
+  detectVisualTheme,
+  extractAndSaveLesson,
+  saveGeneration,
+} from "../../../lib/memory";
+import {
+  buildGameBlueprint,
+  CORE_GAME_KNOWLEDGE,
+} from "../../../lib/game-knowledge";
+
+export const runtime = "nodejs";
+
+const MAX_GENERATE_TOKENS = 4000;
+const MAX_PLAN_TOKENS = 300;
+const MAX_PROMPT_LENGTH = 300;
+const MAX_REQUESTS_PER_HOUR = 20;
+const GENERATE_MODEL = "claude-sonnet-4-6";
+const PLAN_MODEL = "claude-haiku-4-5-20251001";
+const MOCK_MODE = false;
+
+const rateLimitMap = new Map();
+
+const VISUAL_THEME_DESCRIPTIONS = {
+  neon: "neon: Black background #0a0a0a, electric colors — hot pink #ff006e, electric blue #3a86ff, lime green #06d6a0, yellow #ffbe0b. Heavy use of CSS box-shadow glow effects. Everything glows. Title text has neon glow. Game elements pulse or flicker subtly.",
+  nature:
+    "nature: Soft earthy background — deep forest green #1a3a2a or ocean deep blue #0d2137. Game elements in warm greens, sandy yellows, sky blues, flower pinks. Feels organic and calm. Soft gradients. Round shapes. Gentle animations.",
+  space:
+    "space: Deep space background — very dark navy #020818 with tiny white dot stars drawn on canvas. Game elements in bright cosmic colors — nebula purple #7209b7, star gold #ffd60a, comet white, planet blues and reds. Everything feels weightless.",
+  cozy:
+    "cozy: Warm cream or soft amber background #2d1b00 or #1a1208. Game elements in warm oranges, soft yellows, gentle reds, cream whites. Feels like a warm living room. Rounded corners everywhere. Soft shadows. Cheerful and inviting.",
+  horror:
+    "horror: Very dark desaturated background #0d0d0d. Game elements in blood red #8b0000, sickly green #2d5016, bone white #e8e8d0, shadow gray. Flickering effects. Text feels ominous. Everything is slightly unsettling.",
+  retro:
+    "retro: Dark background #1a1a2e with scanline effect using CSS repeating-linear-gradient. Game elements in classic arcade colors — red, yellow, cyan, white, on dark backgrounds. Pixelated feel using font-family monospace everywhere. Score display looks like old arcade cabinet.",
+  minimal:
+    "minimal: Pure white #ffffff or very light gray #f5f5f5 background. Game elements in one single accent color — pick one bold color and use it for everything interactive. Black for text and borders. No gradients. No effects. Brutally clean.",
+  fantasy:
+    "fantasy: Rich deep background — dark purple #1a0a2e or dark green #0a1a0a. Game elements in gold #ffd700, royal purple #7b2d8b, emerald #00a86b, crimson #dc143c. Ornate feel. Title text looks like it belongs on a fantasy game.",
+};
+
+const GENERATE_SYSTEM_PROMPT = `You are the game generation engine powering GameCraft, an AI-powered browser game creator. Real people with no coding skills will play your output within seconds of typing their idea. Your output is the entire product — no human reviews it before it goes live. Make every person feel like a real game developer.
+
+WHO IS USING THIS:
+Non-technical creators, students, hobbyists, and people who have always wanted to make games but never could. They judge the game in the first 10 seconds. If it looks broken or plain they feel disappointed. If it looks amazing and plays well they feel genuinely amazed. Your job is to amaze them every single time.
+
+VISUAL IDENTITY — CRITICAL — READ THIS CAREFULLY:
+Every single game must have a completely unique visual identity. No two games should ever look alike. No default dark background. No template feel. The visual theme for this game is: [VISUAL_THEME_PLACEHOLDER]
+
+Here is exactly what each theme means:
+
+neon: Black background #0a0a0a, electric colors — hot pink #ff006e, electric blue #3a86ff, lime green #06d6a0, yellow #ffbe0b. Heavy use of CSS box-shadow glow effects. Everything glows. Title text has neon glow. Game elements pulse or flicker subtly.
+
+nature: Soft earthy background — deep forest green #1a3a2a or ocean deep blue #0d2137. Game elements in warm greens, sandy yellows, sky blues, flower pinks. Feels organic and calm. Soft gradients. Round shapes. Gentle animations.
+
+space: Deep space background — very dark navy #020818 with tiny white dot stars drawn on canvas. Game elements in bright cosmic colors — nebula purple #7209b7, star gold #ffd60a, comet white, planet blues and reds. Everything feels weightless.
+
+cozy: Warm cream or soft amber background #2d1b00 or #1a1208. Game elements in warm oranges, soft yellows, gentle reds, cream whites. Feels like a warm living room. Rounded corners everywhere. Soft shadows. Cheerful and inviting.
+
+horror: Very dark desaturated background #0d0d0d. Game elements in blood red #8b0000, sickly green #2d5016, bone white #e8e8d0, shadow gray. Flickering effects. Text feels ominous. Everything is slightly unsettling.
+
+retro: Dark background #1a1a2e with scanline effect using CSS repeating-linear-gradient. Game elements in classic arcade colors — red, yellow, cyan, white, on dark backgrounds. Pixelated feel using font-family monospace everywhere. Score display looks like old arcade cabinet.
+
+minimal: Pure white #ffffff or very light gray #f5f5f5 background. Game elements in one single accent color — pick one bold color and use it for everything interactive. Black for text and borders. No gradients. No effects. Brutally clean.
+
+fantasy: Rich deep background — dark purple #1a0a2e or dark green #0a1a0a. Game elements in gold #ffd700, royal purple #7b2d8b, emerald #00a86b, crimson #dc143c. Ornate feel. Title text looks like it belongs on a fantasy game.
+
+OUTPUT RULES — never break these:
+Output raw HTML only. No markdown. No code fences. No explanation. No preamble. First character must be < and last must be >. All CSS in style tag in head. All JS in script tag at end of body. Zero external dependencies. No CDN. No imports. No fetch calls. No external images or fonts.
+
+TECHNICAL REQUIREMENTS:
+Works in sandboxed iframe with allow-scripts only. No localStorage, sessionStorage, cookies, parent access, or dialogs. Canvas for movement, physics, animation, collision. DOM for card, word, text adventure, board, turn-based. Web Audio API only for sound, procedural short tones, never autoplay.
+
+GAME REQUIREMENTS:
+Title screen first with game name and Start button. Controls shown on screen always. Score or progress visible if game type supports it. Win or lose condition. Restart after game over. Fun for at least 2 minutes. Difficulty increases over time for arcade games. On-screen touch buttons for mobile on any game using arrow keys or WASD. Keep output under 450 lines total.
+
+GAME FEEL:
+Every player action needs immediate feedback. Hit an enemy: flash red. Collect item: particle burst. Score point: counter animates. Game over: overlay with score and restart. Win: celebration particles. Controls must feel instant with zero lag.
+
+LESSONS FROM PREVIOUS GENERATIONS — apply every one of these:
+[LESSONS_PLACEHOLDER]
+
+[BLUEPRINT_PLACEHOLDER]
+
+${CORE_GAME_KNOWLEDGE}`;
+
+const PLAN_SYSTEM_PROMPT = `You are a game concept planner for GameCraft. The user describes a game idea — anything from 2D puzzles to 3D shooters to idle clickers to RPGs. Write a punchy 5-line concept in plain text only — no markdown, no bullets, no asterisks, no headers.
+
+Line 1: Game name (3 words max, catchy)
+Line 2: One sentence — what does the player do
+Line 3: One sentence — visual style and feel (mention 2D or 3D perspective if relevant)
+Line 4: Controls (10 words max, specific)
+Line 5: Win or lose condition (one sentence, specific)
+
+Under 80 words total. Present tense. Sound exciting. Never say I will or This will. If they ask for a famous game, describe your playable single-file interpretation confidently.`;
+
+function getClientIp(request) {
+  const forwarded = request.headers.get("x-forwarded-for");
+  if (forwarded) {
+    return forwarded.split(",")[0].trim();
+  }
+  return request.headers.get("x-real-ip") || "unknown";
+}
+
+function checkRateLimit(ip) {
+  const now = Date.now();
+  const hourMs = 60 * 60 * 1000;
+  let entry = rateLimitMap.get(ip);
+
+  if (!entry || now >= entry.resetTime) {
+    entry = { count: 0, resetTime: now + hourMs };
+    rateLimitMap.set(ip, entry);
+  }
+
+  entry.count += 1;
+  console.log(`Request from ${ip} — count: ${entry.count}`);
+
+  if (entry.count > MAX_REQUESTS_PER_HOUR) {
+    return false;
+  }
+  return true;
+}
+
+function estimateTokenCost(mode) {
+  if (mode === "plan") {
+    console.log("PLAN request — ~0.001 credits estimated");
+  } else {
+    console.log("GENERATE request — ~0.05 credits estimated");
+  }
+}
+
+function pickMockFile(prompt) {
+  const p = (prompt || "").toLowerCase();
+  if (p.includes("snake")) return "mock-snake.html";
+  if (p.includes("clicker") || p.includes("cookie")) return "mock-clicker.html";
+  if (p.includes("word") || p.includes("wordle")) return "mock-wordle.html";
+  return "mock-snake.html";
+}
+
+function stripFences(text) {
+  let t = text.trim();
+  if (t.startsWith("```")) {
+    t = t.replace(/^```[a-zA-Z]*\s*\n?/, "");
+    t = t.replace(/\n?```\s*$/, "");
+  }
+  return t.trim();
+}
+
+function buildGenerateSystemPrompt(lessonsContext, visualTheme, blueprint) {
+  const themeDescription =
+    VISUAL_THEME_DESCRIPTIONS[visualTheme] ||
+    VISUAL_THEME_DESCRIPTIONS.neon;
+
+  return GENERATE_SYSTEM_PROMPT.replace(
+    "[LESSONS_PLACEHOLDER]",
+    lessonsContext || "(No lessons yet — make strong creative choices.)"
+  )
+    .replace("[VISUAL_THEME_PLACEHOLDER]", themeDescription)
+    .replace("[BLUEPRINT_PLACEHOLDER]", blueprint);
+}
+
+export async function POST(request) {
+  try {
+    const ip = getClientIp(request);
+
+    if (!checkRateLimit(ip)) {
+      return Response.json(
+        {
+          error:
+            "Too many requests. Please wait before generating more games.",
+        },
+        { status: 429 }
+      );
+    }
+
+    let body = {};
+    try {
+      body = await request.json();
+    } catch {
+      body = {};
+    }
+
+    let prompt = body?.prompt;
+    const mode = body?.mode === "plan" ? "plan" : "generate";
+
+    if (!prompt || typeof prompt !== "string" || !prompt.trim()) {
+      return Response.json(
+        { error: "Please describe a game first." },
+        { status: 400 }
+      );
+    }
+
+    prompt = prompt.trim();
+    if (prompt.length > MAX_PROMPT_LENGTH) {
+      prompt = prompt.slice(0, MAX_PROMPT_LENGTH);
+    }
+
+    estimateTokenCost(mode);
+
+    if (MOCK_MODE) {
+      const file = pickMockFile(prompt);
+      const html = await readFile(
+        path.join(process.cwd(), "public", "mocks", file),
+        "utf8"
+      );
+      return Response.json({ html });
+    }
+
+    const genre = detectGenre(prompt);
+    const visualTheme = detectVisualTheme(prompt);
+    const [lessonsContext, blueprint] = await Promise.all([
+      buildLessonsContext(),
+      buildGameBlueprint(prompt),
+    ]);
+    const systemPrompt = buildGenerateSystemPrompt(
+      lessonsContext,
+      visualTheme,
+      blueprint
+    );
+
+    const apiKey = process.env.ANTHROPIC_API_KEY;
+    if (!apiKey) {
+      return Response.json(
+        {
+          error:
+            "ANTHROPIC_API_KEY is not set. Add it to .env.local and restart the dev server.",
+        },
+        { status: 500 }
+      );
+    }
+
+    const isPlan = mode === "plan";
+    const anthropic = new Anthropic({ apiKey });
+
+    const stream = anthropic.messages.stream({
+      model: isPlan ? PLAN_MODEL : GENERATE_MODEL,
+      max_tokens: isPlan ? MAX_PLAN_TOKENS : MAX_GENERATE_TOKENS,
+      system: isPlan ? PLAN_SYSTEM_PROMPT : systemPrompt,
+      messages: [{ role: "user", content: prompt }],
+    });
+
+    const message = await stream.finalMessage();
+    const text = message.content
+      .filter((block) => block.type === "text")
+      .map((block) => block.text)
+      .join("");
+
+    const tokenCount = message.usage?.output_tokens ?? 0;
+    const outputLength = text.length;
+    const success = true;
+
+    if (!isPlan) {
+      const generationPayload = {
+        prompt,
+        genre,
+        mode,
+        outputLength,
+        tokenCount,
+        model: GENERATE_MODEL,
+        success,
+        visualTheme,
+      };
+
+      saveGeneration(generationPayload).then((generationId) => {
+        extractAndSaveLesson({ ...generationPayload, generationId });
+      });
+    }
+
+    if (isPlan) {
+      return Response.json({ plan: text.trim() });
+    }
+
+    return Response.json({ html: stripFences(text) });
+  } catch (error) {
+    return Response.json(
+      { error: "Generation failed. Please try again.", details: error.message },
+      { status: 500 }
+    );
+  }
+}

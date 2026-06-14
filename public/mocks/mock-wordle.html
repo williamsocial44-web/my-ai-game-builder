@@ -1,0 +1,185 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Word Master</title>
+<style>
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  html, body { height: 100%; }
+  body {
+    font-family: 'Segoe UI', system-ui, sans-serif; background: #121213; color: #fff;
+    min-height: 100%; display: flex; flex-direction: column; align-items: center; gap: 12px; padding: 16px; user-select: none;
+  }
+  h1 { font-size: 26px; letter-spacing: 4px; text-transform: uppercase; border-bottom: 1px solid #3a3a3c; padding-bottom: 8px; }
+  .msg { height: 22px; font-size: 14px; color: #f5c518; letter-spacing: .5px; }
+  .grid { display: grid; grid-template-rows: repeat(6, 1fr); gap: 6px; }
+  .row { display: grid; grid-template-columns: repeat(5, 1fr); gap: 6px; }
+  .tile {
+    width: 54px; height: 54px; border: 2px solid #3a3a3c; display: flex; align-items: center; justify-content: center;
+    font-size: 28px; font-weight: 700; text-transform: uppercase; color: #fff;
+  }
+  .tile.filled { border-color: #565758; animation: pop .1s; }
+  .tile.correct { background: #538d4e; border-color: #538d4e; }
+  .tile.present { background: #b59f3b; border-color: #b59f3b; }
+  .tile.absent  { background: #3a3a3c; border-color: #3a3a3c; }
+  @keyframes pop { 50% { transform: scale(1.08); } }
+  .keyboard { display: flex; flex-direction: column; gap: 6px; margin-top: 6px; }
+  .krow { display: flex; gap: 5px; justify-content: center; }
+  .key {
+    min-width: 30px; height: 48px; padding: 0 10px; border: none; border-radius: 5px;
+    background: #818384; color: #fff; font-weight: 700; font-size: 13px; text-transform: uppercase; cursor: pointer;
+  }
+  .key.wide { font-size: 11px; }
+  .key:hover { filter: brightness(1.12); }
+  .key.correct { background: #538d4e; }
+  .key.present { background: #b59f3b; }
+  .key.absent  { background: #3a3a3c; }
+  .again {
+    margin-top: 4px; padding: 10px 22px; border: none; border-radius: 6px; background: #538d4e; color: #fff;
+    font: inherit; font-weight: 700; cursor: pointer; display: none; letter-spacing: 1px;
+  }
+  .again.show { display: inline-block; }
+  .hint { font-size: 12px; color: #818384; }
+</style>
+</head>
+<body>
+  <h1>Word Master</h1>
+  <div class="msg" id="msg"></div>
+  <div class="grid" id="grid"></div>
+  <div class="keyboard" id="keyboard"></div>
+  <button class="again" id="again">Play Again</button>
+  <div class="hint">Type letters &nbsp;·&nbsp; Enter to guess &nbsp;·&nbsp; Backspace to delete</div>
+
+<script>
+(function(){
+  const WORDS = ['APPLE','BRAVE','CRANE','DRIVE','EAGLE','FLAME','GHOST','HONEY','IVORY','JOLLY',
+    'KNEEL','LEMON','MANGO','NOBLE','OCEAN','PIANO','QUILT','RIVER','STORM','TIGER',
+    'UNITY','VOWEL','WHALE','XENON','YACHT','ZEBRA','PLANT','BRICK','CHESS','DREAM',
+    'FROST','GRAPE','HEART','LIGHT','MUSIC','PEARL','ROBOT','SHINE','TRAIN','WORLD'];
+  const ROWS = 6, COLS = 5;
+  const KEYS = ['QWERTYUIOP','ASDFGHJKL','ZXCVBNM'];
+  let answer, row, col, board, done;
+  const keyState = {};
+  const gridEl = document.getElementById('grid');
+  const msgEl = document.getElementById('msg');
+  const kbEl = document.getElementById('keyboard');
+  const againBtn = document.getElementById('again');
+
+  function buildGrid(){
+    gridEl.innerHTML = '';
+    for (let r=0;r<ROWS;r++){
+      const rowEl = document.createElement('div'); rowEl.className = 'row';
+      for (let c=0;c<COLS;c++){
+        const t = document.createElement('div'); t.className = 'tile'; t.id = 't'+r+'-'+c;
+        rowEl.appendChild(t);
+      }
+      gridEl.appendChild(rowEl);
+    }
+  }
+
+  function makeKey(label, wide){
+    const b = document.createElement('button');
+    b.className = 'key' + (wide ? ' wide' : ''); b.textContent = label; b.dataset.key = label;
+    b.addEventListener('click', () => handleKey(label));
+    return b;
+  }
+
+  function buildKeyboard(){
+    kbEl.innerHTML = '';
+    KEYS.forEach((line, i) => {
+      const kr = document.createElement('div'); kr.className = 'krow';
+      if (i === 2) kr.appendChild(makeKey('ENTER', true));
+      for (const ch of line) kr.appendChild(makeKey(ch, false));
+      if (i === 2) kr.appendChild(makeKey('⌫', true));
+      kbEl.appendChild(kr);
+    });
+  }
+
+  function reset(){
+    answer = WORDS[(Math.random()*WORDS.length)|0];
+    row = 0; col = 0; done = false;
+    board = Array.from({length: ROWS}, () => Array(COLS).fill(''));
+    for (const k in keyState) delete keyState[k];
+    buildGrid();
+    document.querySelectorAll('.key').forEach(k => k.classList.remove('correct','present','absent'));
+    msgEl.textContent = '';
+    againBtn.classList.remove('show');
+  }
+
+  function flash(text){
+    msgEl.textContent = text;
+    clearTimeout(flash._t);
+    flash._t = setTimeout(() => { if (!done) msgEl.textContent = ''; }, 1400);
+  }
+
+  function render(){
+    for (let c=0;c<COLS;c++){
+      const t = document.getElementById('t'+row+'-'+c);
+      t.textContent = board[row][c];
+      t.classList.toggle('filled', !!board[row][c]);
+    }
+  }
+
+  function updateKey(ch, state){
+    const order = { absent:0, present:1, correct:2 };
+    if (keyState[ch] === undefined || order[state] > order[keyState[ch]]) keyState[ch] = state;
+    const k = document.querySelector('.key[data-key="' + ch + '"]');
+    if (k){ k.classList.remove('absent','present','correct'); k.classList.add(keyState[ch]); }
+  }
+
+  function submit(){
+    if (col < COLS){ flash('Not enough letters'); return; }
+    const guess = board[row].join('');
+    const res = Array(COLS).fill('absent');
+    const counts = {};
+    for (const ch of answer) counts[ch] = (counts[ch]||0) + 1;
+    for (let c=0;c<COLS;c++){ if (guess[c] === answer[c]){ res[c] = 'correct'; counts[guess[c]]--; } }
+    for (let c=0;c<COLS;c++){
+      if (res[c] === 'correct') continue;
+      const ch = guess[c];
+      if (counts[ch] > 0){ res[c] = 'present'; counts[ch]--; }
+    }
+    for (let c=0;c<COLS;c++){
+      const t = document.getElementById('t'+row+'-'+c);
+      t.classList.add(res[c]);
+      updateKey(guess[c], res[c]);
+    }
+    if (guess === answer){
+      done = true; msgEl.textContent = 'Brilliant! 🎉 You got it!';
+      againBtn.classList.add('show');
+      return;
+    }
+    row++; col = 0;
+    if (row >= ROWS){
+      done = true; msgEl.textContent = 'The word was ' + answer;
+      againBtn.classList.add('show');
+    }
+  }
+
+  function handleKey(key){
+    if (done) return;
+    key = key.toUpperCase();
+    if (key === 'ENTER') return submit();
+    if (key === '⌫' || key === 'BACKSPACE'){
+      if (col > 0){ col--; board[row][col] = ''; render(); }
+      return;
+    }
+    if (/^[A-Z]$/.test(key) && col < COLS){
+      board[row][col] = key; col++; render();
+    }
+  }
+
+  document.addEventListener('keydown', (e) => {
+    if (e.key === 'Enter') handleKey('ENTER');
+    else if (e.key === 'Backspace') handleKey('BACKSPACE');
+    else if (/^[a-zA-Z]$/.test(e.key)) handleKey(e.key);
+  });
+  againBtn.addEventListener('click', reset);
+
+  buildKeyboard();
+  reset();
+})();
+</script>
+</body>
+</html>
