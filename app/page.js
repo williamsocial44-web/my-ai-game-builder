@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 
 const PRODUCT_LABEL = "AI Game Builder";
 const DEFAULT_PROMPT =
@@ -203,12 +203,16 @@ function LogoMark() {
   );
 }
 
-function Sidebar({ activeView, setActiveView, hasGame }) {
+function Sidebar({ activeView, setActiveView, hasGame, html, downloadGame }) {
+  function shareBuilder() {
+    navigator.clipboard?.writeText(window.location.href).catch(() => {});
+  }
+
   return (
     <aside className="app-sidebar">
       <div className="sidebar-head">
         <LogoMark />
-        <button className="workspace-switch" type="button">
+        <button className="workspace-switch" type="button" onClick={() => setActiveView("home")}>
           <span className="workspace-initial">A</span>
           <span>Builder workspace</span>
           <span className="workspace-chevron">v</span>
@@ -256,17 +260,21 @@ function Sidebar({ activeView, setActiveView, hasGame }) {
 
       <div className="sidebar-spacer" />
 
-      <button type="button" className="sidebar-card">
+      <button type="button" className="sidebar-card" onClick={shareBuilder}>
         <span>
           <strong>Share builder</strong>
-          <small>Invite a teammate to remix a game</small>
+          <small>Copy link to this workspace</small>
         </span>
         <Icon name="gift" />
       </button>
-      <button type="button" className="sidebar-card sidebar-card-accent">
+      <button
+        type="button"
+        className="sidebar-card sidebar-card-accent"
+        onClick={() => html ? downloadGame() : setActiveView("preview")}
+      >
         <span>
           <strong>Ship faster</strong>
-          <small>Export playable HTML prototypes</small>
+          <small>{html ? "Download your game now" : "Export playable HTML"}</small>
         </span>
         <Icon name="bolt" />
       </button>
@@ -307,16 +315,24 @@ function PromptComposer({
   planning,
   compact = false,
 }) {
+  const textareaRef = useRef(null);
+
   return (
     <div className={`composer ${compact ? "composer-compact" : ""}`}>
       <textarea
+        ref={textareaRef}
         value={prompt}
         onChange={(event) => setPrompt(event.target.value)}
         placeholder="Describe the game you want to build..."
         rows={compact ? 3 : 4}
       />
       <div className="composer-actions">
-        <button type="button" className="round-icon-button" aria-label="Add context">
+        <button
+          type="button"
+          className="round-icon-button"
+          aria-label="Add context"
+          onClick={() => textareaRef.current?.focus()}
+        >
           <Icon name="plus" />
         </button>
         <div className="composer-right">
@@ -529,7 +545,7 @@ function HomeView({
     <div className="view-stack">
       <section className="hero-stage">
         <div className="hero-glow" aria-hidden />
-        <button type="button" className="connector-pill">
+        <button type="button" className="connector-pill" onClick={() => setActiveView("connectors")}>
           <span className="mini-badges">
             <i />
             <i />
@@ -627,7 +643,20 @@ function HomeView({
   );
 }
 
-function ProjectsView({ title = "Projects", openPreview }) {
+function ProjectsView({ title = "Projects", openPreview, setActiveView }) {
+  const [query, setQuery] = useState("");
+  const [statusFilter, setStatusFilter] = useState("Any status");
+  const statuses = ["Any status", "Ready", "Mock"];
+
+  const filtered = useMemo(() => {
+    const q = query.trim().toLowerCase();
+    return PROJECTS.filter((p) => {
+      const matchesQuery = !q || `${p.title} ${p.prompt}`.toLowerCase().includes(q);
+      const matchesStatus = statusFilter === "Any status" || p.status === statusFilter;
+      return matchesQuery && matchesStatus;
+    });
+  }, [query, statusFilter]);
+
   return (
     <div className="page-panel">
       <div className="toolbar-head">
@@ -635,7 +664,7 @@ function ProjectsView({ title = "Projects", openPreview }) {
           <h1>{title}</h1>
           <p>Every generated concept, mock, and playable export in one place.</p>
         </div>
-        <button type="button" className="primary-button">
+        <button type="button" className="primary-button" onClick={() => setActiveView("home")}>
           <Icon name="plus" />
           Create
         </button>
@@ -643,21 +672,35 @@ function ProjectsView({ title = "Projects", openPreview }) {
       <div className="filter-row">
         <label className="search-field">
           <Icon name="search" />
-          <input placeholder="Search projects..." />
+          <input
+            value={query}
+            onChange={(e) => setQuery(e.target.value)}
+            placeholder="Search projects..."
+          />
         </label>
-        <button type="button">Last edited</button>
-        <button type="button">Any status</button>
-        <button type="button">All creators</button>
+        <button type="button" style={{ opacity: 0.5 }}>Last edited</button>
+        {statuses.map((s) => (
+          <button
+            key={s}
+            type="button"
+            onClick={() => setStatusFilter(s)}
+            style={{ opacity: statusFilter === s ? 1 : 0.5, fontWeight: statusFilter === s ? 600 : 400 }}
+          >
+            {s}
+          </button>
+        ))}
       </div>
       <h2 className="subhead">Active in last 60 days</h2>
       <div className="project-grid">
-        {PROJECTS.map((project) => (
+        {filtered.length > 0 ? filtered.map((project) => (
           <ProjectCard
             key={project.title}
             project={project}
             onOpen={openPreview}
           />
-        ))}
+        )) : (
+          <p style={{ color: "rgba(255,255,255,0.4)", padding: "24px 0" }}>No projects match your search.</p>
+        )}
       </div>
     </div>
   );
@@ -807,6 +850,9 @@ function PreviewView({
     return () => clearTimeout(timer);
   }, [html, rated, setShowRating]);
 
+  const [showFullBrief, setShowFullBrief] = useState(false);
+  const briefText = generatedPrompt || prompt || DEFAULT_PROMPT;
+
   return (
     <div className="preview-workspace">
       <section className="build-panel">
@@ -820,8 +866,12 @@ function PreviewView({
 
         <article className="brief-card">
           <h2>Game brief</h2>
-          <p>{generatedPrompt || prompt || DEFAULT_PROMPT}</p>
-          <button type="button">Show more</button>
+          <p style={{ WebkitLineClamp: showFullBrief ? "unset" : 2, overflow: "hidden", display: "-webkit-box", WebkitBoxOrient: "vertical" }}>
+            {briefText}
+          </p>
+          <button type="button" onClick={() => setShowFullBrief((v) => !v)}>
+            {showFullBrief ? "Show less" : "Show more"}
+          </button>
         </article>
 
         <div className="build-log">
@@ -1075,7 +1125,7 @@ export default function Home() {
 
   return (
     <div className="app-shell">
-      <Sidebar activeView={activeView} setActiveView={setActiveView} hasGame={!!html} />
+      <Sidebar activeView={activeView} setActiveView={setActiveView} hasGame={!!html} html={html} downloadGame={downloadGame} />
       <div className="app-main">
         <MobileTopbar activeView={activeView} setActiveView={setActiveView} />
         {activeView === "home" && (
@@ -1094,7 +1144,7 @@ export default function Home() {
           />
         )}
         {["projects", "starred", "created", "shared"].includes(activeView) && (
-          <ProjectsView title={projectTitle} openPreview={openPreview} />
+          <ProjectsView title={projectTitle} openPreview={openPreview} setActiveView={setActiveView} />
         )}
         {(activeView === "resources" || activeView === "search") && (
           <ResourcesView
