@@ -37,22 +37,52 @@ function Icon({ name, className }) {
     signout: <><path d="M15 12H4m6-5-7 5 7 5" /><path d="M14 4h4a2 2 0 0 1 2 2v12a2 2 0 0 1-2 2h-4" /></>,
     controller: <><path d="M6 11h4m-2-2v4" /><circle cx="15.5" cy="11" r="1" fill="currentColor" stroke="none" /><circle cx="18" cy="13.5" r="1" fill="currentColor" stroke="none" /><path d="M7 6h10a4 4 0 0 1 4 4l.8 5.2a2.5 2.5 0 0 1-4.7 1.4L16 15H8l-1.1 1.6a2.5 2.5 0 0 1-4.7-1.4L3 10a4 4 0 0 1 4-4Z" /></>,
     sparkle: <path d="M12 3v4m0 10v4m9-9h-4M7 12H3m12.5-5.5-2.8 2.8m-3.4 3.4-2.8 2.8m0-9 2.8 2.8m3.4 3.4 2.8 2.8" />,
+    attach: <path d="M21 11.5 12 20a5 5 0 0 1-7-7l8.5-8.5a3.5 3.5 0 0 1 5 5L10 17a2 2 0 0 1-3-3l7.5-7.5" />,
+    palette: <><circle cx="13.5" cy="6.5" r="1" fill="currentColor" stroke="none" /><circle cx="17" cy="10.5" r="1" fill="currentColor" stroke="none" /><circle cx="8.5" cy="7.5" r="1" fill="currentColor" stroke="none" /><circle cx="6.5" cy="12" r="1" fill="currentColor" stroke="none" /><path d="M12 2a10 10 0 0 0 0 20 2.5 2.5 0 0 0 2-4 2.5 2.5 0 0 1 2-4h2a4 4 0 0 0 4-4 10 10 0 0 0-10-8Z" /></>,
+    arrowLeft: <path d="M19 12H5m6-7-7 7 7 7" />,
+    databases: <><ellipse cx="12" cy="6" rx="8" ry="3" /><path d="M4 6v12c0 1.7 3.6 3 8 3s8-1.3 8-3V6" /><path d="M4 12c0 1.7 3.6 3 8 3s8-1.3 8-3" /></>,
   };
   return <svg {...p}>{s[name] || s.grid}</svg>;
 }
 
 /* ------------------------------------------------------------- templates --- */
 
+const CATEGORIES = ["All", "Arcade", "Action", "Puzzle", "Idle", "Cards", "Platformer", "Strategy", "Retro"];
+
+const SCENE_EMOJI = {
+  neon: "🐍",
+  space: "🚀",
+  clicker: "🍪",
+  word: "🔤",
+  cards: "🃏",
+  platformer: "🏃",
+  fantasy: "⚔️",
+  retro: "👾",
+};
+
 const TEMPLATES = [
-  { title: "Neon Serpent", desc: "Glowing arcade snake with power-ups", scene: "neon", color: "#06d6a0", prompt: "a neon snake game with glowing trails, power-ups, and boss rounds" },
-  { title: "Orbital Defense", desc: "Defend a station from meteor waves", scene: "space", color: "#5b8cff", prompt: "a space shooter defending a station from waves of meteors and alien ships" },
-  { title: "Cookie Empire", desc: "Idle clicker with prestige and upgrades", scene: "clicker", color: "#ffc660", prompt: "a cookie-style idle clicker with upgrades, prestige, and golden cookies" },
-  { title: "Daily Word", desc: "Six-guess word puzzle with streaks", scene: "word", color: "#3ddc84", prompt: "a daily word puzzle with six guesses, on-screen keyboard, and a streak counter" },
-  { title: "Dungeon Draw", desc: "Roguelike card battler", scene: "cards", color: "#b362ff", prompt: "a roguelike card battler where each draw explores a new dungeon room" },
-  { title: "Coin Rush", desc: "One-screen platformer against the clock", scene: "platformer", color: "#ff7a59", prompt: "a one-screen platformer with coins, spikes, moving platforms, and a timer" },
-  { title: "Crown Quest", desc: "Fantasy quest with spells and a boss", scene: "fantasy", color: "#ffd700", prompt: "a fantasy quest game with gold, magic spells, and a final boss" },
-  { title: "Arcade 84", desc: "Retro cabinet with a high-score table", scene: "retro", color: "#ff006e", prompt: "a retro arcade game with scanlines, classic colors, and a high-score table" },
-  { title: "Brick Breaker", desc: "Neon paddle-and-ball with combos", scene: "neon", color: "#06d6a0", prompt: "a brick breaker game with neon bricks, multiball power-ups, and combos" },
+  { title: "Neon Serpent", cat: "Arcade", emoji: "🐍", desc: "Glowing snake with power-ups and boss rounds", scene: "neon", prompt: "a neon snake game with glowing trails, power-ups, and boss rounds" },
+  { title: "Orbital Defense", cat: "Action", emoji: "🚀", desc: "Defend a station from meteor waves", scene: "space", prompt: "a space shooter defending a station from waves of meteors and alien ships" },
+  { title: "Cookie Empire", cat: "Idle", emoji: "🍪", desc: "Idle clicker with prestige and upgrades", scene: "clicker", prompt: "a cookie-style idle clicker with upgrades, prestige, and golden cookies" },
+  { title: "Daily Word", cat: "Puzzle", emoji: "🔤", desc: "Six-guess word puzzle with streaks", scene: "word", prompt: "a daily word puzzle with six guesses, on-screen keyboard, and a streak counter" },
+  { title: "Dungeon Draw", cat: "Cards", emoji: "🃏", desc: "Roguelike card battler, room by room", scene: "cards", prompt: "a roguelike card battler where each draw explores a new dungeon room" },
+  { title: "Coin Rush", cat: "Platformer", emoji: "🏃", desc: "One-screen platformer against the clock", scene: "platformer", prompt: "a one-screen platformer with coins, spikes, moving platforms, and a timer" },
+  { title: "Crown Quest", cat: "Action", emoji: "⚔️", desc: "Fantasy quest with spells and a boss", scene: "fantasy", prompt: "a fantasy quest game with gold, magic spells, and a final boss" },
+  { title: "Arcade 84", cat: "Retro", emoji: "👾", desc: "Retro cabinet with a high-score table", scene: "retro", prompt: "a retro arcade game with scanlines, classic colors, and a high-score table" },
+  { title: "Brick Breaker", cat: "Arcade", emoji: "🧱", desc: "Neon paddle-and-ball with combos", scene: "neon", prompt: "a brick breaker game with neon bricks, multiball power-ups, and combos" },
+  { title: "Star Dodger", cat: "Arcade", emoji: "✨", desc: "Weave through an endless asteroid storm", scene: "space", prompt: "an endless dodging game weaving through asteroids and stars with rising speed" },
+  { title: "Tower Siege", cat: "Strategy", emoji: "🏰", desc: "Place towers to hold back the horde", scene: "fantasy", prompt: "a tower defense game placing towers to stop waves of enemies on a winding path" },
+  { title: "Match Blitz", cat: "Puzzle", emoji: "💎", desc: "Swap gems for chain-reaction combos", scene: "word", prompt: "a match-three puzzle where you swap gems to make rows and trigger combos on a timer" },
+  { title: "Tap Tycoon", cat: "Idle", emoji: "💰", desc: "Grow a tiny empire one tap at a time", scene: "clicker", prompt: "an idle tycoon where tapping earns coins to buy auto-earners and upgrades" },
+  { title: "Maze Runner", cat: "Puzzle", emoji: "🌀", desc: "Escape procedurally drawn mazes", scene: "platformer", prompt: "a maze game where you navigate randomly generated mazes against a timer" },
+  { title: "Pixel Knight", cat: "Platformer", emoji: "🛡️", desc: "Hop, slash, and grab the crown", scene: "fantasy", prompt: "a pixel platformer where a knight jumps over spikes and slashes slimes to reach the crown" },
+  { title: "Bubble Pop", cat: "Arcade", emoji: "🫧", desc: "Aim and pop matching bubble clusters", scene: "neon", prompt: "a bubble shooter where you aim and pop clusters of matching colored bubbles" },
+  { title: "Memory Match", cat: "Cards", emoji: "🧠", desc: "Flip cards and remember the pairs", scene: "cards", prompt: "a memory game flipping cards to find matching pairs against a move counter" },
+  { title: "Asteroid Field", cat: "Action", emoji: "☄️", desc: "Blast rocks in zero gravity", scene: "space", prompt: "an asteroid blasting game with a rotating ship, thrust, and splitting rocks" },
+  { title: "Rhythm Tap", cat: "Retro", emoji: "🎵", desc: "Hit the notes as they fall", scene: "retro", prompt: "a rhythm game where you tap falling notes in time to a beat for combos and score" },
+  { title: "Block Stacker", cat: "Puzzle", emoji: "🟦", desc: "Drop and clear falling blocks", scene: "neon", prompt: "a falling-block puzzle where you rotate and drop pieces to clear full rows" },
+  { title: "Sky Racer", cat: "Action", emoji: "🏎️", desc: "Dodge traffic at top speed", scene: "space", prompt: "a top-down racing game dodging traffic and collecting boosts at rising speed" },
+  { title: "Idle Farm", cat: "Idle", emoji: "🌾", desc: "Plant, harvest, automate, repeat", scene: "clicker", prompt: "an idle farming game planting crops that grow and sell automatically over time" },
 ];
 
 /* --------------------------------------------------------------- helpers --- */
@@ -78,10 +108,12 @@ function Avatar({ user, size = 28 }) {
   );
 }
 
-function Thumb({ scene, title }) {
+function Thumb({ scene, title, emoji }) {
+  const glyph = emoji || SCENE_EMOJI[scene] || "🎮";
   return (
     <div className="t-thumb">
       <div className={`scene scene-${scene}`}>
+        <span className="scene-emoji" aria-hidden>{glyph}</span>
         <span className="scene-title">{title}</span>
       </div>
     </div>
@@ -217,29 +249,66 @@ function Sidebar({ section, setSection, user, recents, onOpenProject, onSignOut,
 
 /* ------------------------------------------------------------- home view --- */
 
-function HomeView({ user, projects, onBuild, onOpenProject, setSection }) {
+const DESIGN_STYLES = [
+  { label: "Neon arcade", note: "a glowing neon arcade look" },
+  { label: "Retro pixel", note: "a retro pixel-art arcade look" },
+  { label: "Cozy", note: "a warm, cozy, relaxed look" },
+  { label: "Fantasy", note: "an ornate fantasy look" },
+  { label: "Minimal", note: "a clean, minimal look" },
+];
+
+function HomeView({ user, projects, onBuild, onOpenProject, setSection, onNotify }) {
   const [value, setValue] = useState("");
   const [tab, setTab] = useState("projects");
   const [mode, setMode] = useState("Build");
   const [modeOpen, setModeOpen] = useState(false);
+  const [plusOpen, setPlusOpen] = useState(false);
+  const [plusView, setPlusView] = useState("menu"); // menu | design
   const ref = useRef(null);
+  const fileRef = useRef(null);
   const name = displayName(user);
 
   useEffect(() => {
     const el = ref.current;
     if (!el) return;
     el.style.height = "auto";
-    el.style.height = Math.min(el.scrollHeight, 200) + "px";
+    el.style.height = Math.min(el.scrollHeight, 220) + "px";
   }, [value]);
+
+  useEffect(() => {
+    if (!plusOpen) return;
+    const close = (e) => {
+      if (!e.target.closest(".hp-plus-wrap")) {
+        setPlusOpen(false);
+        setPlusView("menu");
+      }
+    };
+    window.addEventListener("click", close);
+    return () => window.removeEventListener("click", close);
+  }, [plusOpen]);
 
   function submit() {
     if (!value.trim()) return;
     onBuild(value.trim());
   }
 
+  function applyStyle(note) {
+    setValue((v) => (v.trim() ? `${v.trim()} — give it ${note}.` : `Give it ${note}.`));
+    setPlusOpen(false);
+    setPlusView("menu");
+    setTimeout(() => ref.current?.focus(), 0);
+  }
+
+  function onAttach(e) {
+    const file = e.target.files?.[0];
+    if (file) onNotify?.(`Attached ${file.name}`);
+    setPlusOpen(false);
+    e.target.value = "";
+  }
+
   const tabItems =
     tab === "templates"
-      ? TEMPLATES.slice(0, 8).map((t) => ({ ...t, isTemplate: true }))
+      ? TEMPLATES.slice(0, 6).map((t) => ({ ...t, isTemplate: true }))
       : projects;
 
   return (
@@ -266,9 +335,64 @@ function HomeView({ user, projects, onBuild, onOpenProject, setSection }) {
             rows={1}
           />
           <div className="home-prompt-bar">
-            <button type="button" className="hp-plus" onClick={() => setSection("resources")} title="Start from a template">
-              <Icon name="plus" />
-            </button>
+            <div className="hp-plus-wrap">
+              <button
+                type="button"
+                className="hp-plus"
+                onClick={(e) => {
+                  e.stopPropagation();
+                  setPlusView("menu");
+                  setPlusOpen((o) => !o);
+                }}
+                title="Add"
+              >
+                <Icon name="plus" />
+              </button>
+              {plusOpen && (
+                <div className="plus-menu" onClick={(e) => e.stopPropagation()}>
+                  {plusView === "menu" ? (
+                    <>
+                      <button type="button" className="plus-item" onClick={() => fileRef.current?.click()}>
+                        <Icon name="attach" />
+                        <span>Attach files</span>
+                        <Icon name="chevron" className="plus-arrow" />
+                      </button>
+                      <button type="button" className="plus-item" onClick={() => setPlusView("design")}>
+                        <Icon name="palette" />
+                        <span>Design</span>
+                        <Icon name="chevron" className="plus-arrow" />
+                      </button>
+                      <button
+                        type="button"
+                        className="plus-item"
+                        onClick={() => {
+                          setSection("connectors");
+                          setPlusOpen(false);
+                        }}
+                      >
+                        <Icon name="nodes" />
+                        <span>Connectors</span>
+                        <Icon name="chevron" className="plus-arrow" />
+                      </button>
+                    </>
+                  ) : (
+                    <>
+                      <button type="button" className="plus-item plus-back" onClick={() => setPlusView("menu")}>
+                        <Icon name="arrowLeft" />
+                        <span>Design style</span>
+                      </button>
+                      {DESIGN_STYLES.map((s) => (
+                        <button key={s.label} type="button" className="plus-item" onClick={() => applyStyle(s.note)}>
+                          <Icon name="palette" />
+                          <span>{s.label}</span>
+                        </button>
+                      ))}
+                    </>
+                  )}
+                </div>
+              )}
+              <input ref={fileRef} type="file" hidden onChange={onAttach} />
+            </div>
             <div className="hp-right">
               <div className="hp-mode">
                 <button type="button" className="hp-mode-btn" onClick={() => setModeOpen((o) => !o)}>
@@ -289,6 +413,11 @@ function HomeView({ user, projects, onBuild, onOpenProject, setSection }) {
               </button>
             </div>
           </div>
+        </div>
+
+        <div className="home-scroll-hint" aria-hidden>
+          <span>Your games</span>
+          <Icon name="chevron" />
         </div>
       </div>
 
@@ -317,7 +446,7 @@ function HomeView({ user, projects, onBuild, onOpenProject, setSection }) {
                 className="card"
                 onClick={() => (item.isTemplate ? onBuild(item.prompt) : onOpenProject(item))}
               >
-                <Thumb scene={item.scene} title={item.title} />
+                <Thumb scene={item.scene} title={item.title} emoji={item.emoji} />
                 <div className="card-body">
                   <Avatar user={user} size={28} />
                   <span className="meta">
@@ -437,21 +566,40 @@ function ProjectsView({ title, user, projects, onOpenProject, setSection }) {
 /* -------------------------------------------------------- resources view --- */
 
 function ResourcesView({ onBuild }) {
+  const [cat, setCat] = useState("All");
+  const list = cat === "All" ? TEMPLATES : TEMPLATES.filter((t) => t.cat === cat);
+
   return (
-    <div className="page">
+    <div className="page res-page">
       <div className="page-head">
-        <h1>Resources</h1>
+        <h1>Game gallery</h1>
       </div>
-      <p className="page-lead">Start from a template to build your next game.</p>
+      <p className="page-lead">Pick a starting point — {TEMPLATES.length} ready-made games across every genre. Click one to build it.</p>
+
+      <div className="cat-tabs">
+        {CATEGORIES.map((c) => (
+          <button
+            key={c}
+            type="button"
+            className={`cat-tab ${cat === c ? "is-active" : ""}`}
+            onClick={() => setCat(c)}
+          >
+            {c}
+            {c !== "All" && <span className="cat-count">{TEMPLATES.filter((t) => t.cat === c).length}</span>}
+          </button>
+        ))}
+      </div>
+
       <div className="card-grid res-grid">
-        {TEMPLATES.map((t) => (
+        {list.map((t) => (
           <button key={t.title} type="button" className="card" onClick={() => onBuild(t.prompt)}>
-            <Thumb scene={t.scene} title={t.title} />
+            <Thumb scene={t.scene} title={t.title} emoji={t.emoji} />
             <div className="card-body card-body-tpl">
               <span className="meta">
                 <strong>{t.title}</strong>
                 <small>{t.desc}</small>
               </span>
+              <span className="card-cat">{t.cat}</span>
             </div>
           </button>
         ))}
@@ -536,12 +684,13 @@ function SearchView({ projects, onOpenProject, onBuild, user }) {
             <div className="card-grid res-grid">
               {matchedTemplates.map((t) => (
                 <button key={t.title} type="button" className="card" onClick={() => onBuild(t.prompt)}>
-                  <Thumb scene={t.scene} title={t.title} />
+                  <Thumb scene={t.scene} title={t.title} emoji={t.emoji} />
                   <div className="card-body card-body-tpl">
                     <span className="meta">
                       <strong>{t.title}</strong>
                       <small>{t.desc}</small>
                     </span>
+                    <span className="card-cat">{t.cat}</span>
                   </div>
                 </button>
               ))}
@@ -586,7 +735,7 @@ export default function Dashboard({ user, projects, onBuild, onOpenProject, onSi
       />
       <main className="app-main">
         {section === "home" && (
-          <HomeView user={user} projects={recents} onBuild={onBuild} onOpenProject={onOpenProject} setSection={setSection} />
+          <HomeView user={user} projects={recents} onBuild={onBuild} onOpenProject={onOpenProject} setSection={setSection} onNotify={onNotify} />
         )}
         {["projects", "starred", "created", "shared"].includes(section) && (
           <ProjectsView

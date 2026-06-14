@@ -1779,7 +1779,7 @@ a {
   top: 0;
   left: 0;
   right: 0;
-  height: 82vh;
+  height: 100vh;
   background:
     radial-gradient(70% 50% at 50% 30%, rgba(91, 140, 255, 0.5), transparent 70%),
     linear-gradient(180deg, #16204e 0%, #5a2f86 34%, #ff4d8f 60%, #ff7a3d 82%, var(--bg) 100%);
@@ -1799,8 +1799,8 @@ a {
   align-items: center;
   justify-content: center;
   text-align: center;
-  min-height: 62vh;
-  padding: 56px 24px 24px;
+  min-height: 100vh;
+  padding: 56px 24px 80px;
 }
 .home-pill {
   display: inline-flex;
@@ -1839,13 +1839,13 @@ a {
 }
 
 .home-prompt {
-  width: min(100%, 720px);
+  width: min(100%, 760px);
   background: rgba(18, 18, 22, 0.86);
   border: 1px solid rgba(255, 255, 255, 0.14);
-  border-radius: 20px;
+  border-radius: 22px;
   box-shadow: var(--shadow);
   backdrop-filter: blur(16px);
-  padding: 16px 16px 12px;
+  padding: 20px 20px 14px;
   text-align: left;
 }
 .home-prompt textarea {
@@ -1855,10 +1855,10 @@ a {
   background: transparent;
   color: var(--text);
   resize: none;
-  font-size: 16px;
-  line-height: 1.5;
-  min-height: 48px;
-  max-height: 200px;
+  font-size: 17px;
+  line-height: 1.55;
+  min-height: 96px;
+  max-height: 240px;
 }
 .home-prompt textarea::placeholder {
   color: var(--dim);
@@ -2280,4 +2280,166 @@ a {
   .proj-filters {
     flex-wrap: wrap;
   }
+}
+
+/* ===========================================================================
+   Dashboard home: "+" menu, scroll hint, gallery categories, tile motifs
+   =========================================================================== */
+
+.hp-plus-wrap {
+  position: relative;
+}
+.plus-menu {
+  position: absolute;
+  top: calc(100% + 10px);
+  left: 0;
+  z-index: 30;
+  width: 232px;
+  padding: 6px;
+  border-radius: 14px;
+  background: #1b1b20;
+  border: 1px solid var(--border-2);
+  box-shadow: var(--shadow);
+  animation: rise 0.16s ease;
+}
+.plus-item {
+  display: grid;
+  grid-template-columns: 20px 1fr auto;
+  align-items: center;
+  gap: 11px;
+  width: 100%;
+  padding: 10px 11px;
+  border-radius: 9px;
+  font-size: 14px;
+  font-weight: 500;
+  color: var(--text);
+  text-align: left;
+  transition: background 0.14s ease, color 0.14s ease;
+}
+.plus-item:hover {
+  background: #2f6bff;
+  color: #fff;
+}
+.plus-item svg {
+  width: 18px;
+  height: 18px;
+}
+.plus-item .plus-arrow {
+  width: 15px;
+  height: 15px;
+  transform: rotate(-90deg);
+  opacity: 0.7;
+}
+.plus-back {
+  grid-template-columns: 20px 1fr;
+  color: var(--muted);
+  border-radius: 9px 9px 0 0;
+  border-bottom: 1px solid var(--border);
+  margin-bottom: 4px;
+}
+.plus-back:hover {
+  background: var(--surface-2);
+  color: var(--text);
+}
+
+.home-scroll-hint {
+  position: absolute;
+  bottom: 22px;
+  left: 50%;
+  transform: translateX(-50%);
+  display: inline-flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 2px;
+  color: rgba(255, 255, 255, 0.7);
+  font-size: 11px;
+  font-weight: 700;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  animation: hint-bounce 1.9s ease-in-out infinite;
+}
+.home-scroll-hint svg {
+  width: 18px;
+  height: 18px;
+}
+@keyframes hint-bounce {
+  0%, 100% { transform: translate(-50%, 0); }
+  50% { transform: translate(-50%, 5px); }
+}
+
+/* gallery category tabs */
+.cat-tabs {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  margin-bottom: 28px;
+}
+.cat-tab {
+  display: inline-flex;
+  align-items: center;
+  gap: 7px;
+  padding: 8px 15px;
+  border-radius: 999px;
+  font-size: 13.5px;
+  font-weight: 600;
+  color: var(--muted);
+  background: var(--surface);
+  border: 1px solid var(--border);
+  transition: background 0.15s ease, color 0.15s ease, border-color 0.15s ease;
+}
+.cat-tab:hover {
+  color: var(--text);
+  border-color: var(--border-2);
+}
+.cat-tab.is-active {
+  color: #fff;
+  background: var(--grad);
+  border-color: transparent;
+}
+.cat-count {
+  font-size: 11px;
+  font-weight: 700;
+  padding: 1px 7px;
+  border-radius: 999px;
+  background: rgba(255, 255, 255, 0.16);
+}
+
+/* genre motif on each game tile */
+.scene-emoji {
+  position: absolute;
+  top: 50%;
+  left: 50%;
+  transform: translate(-50%, -60%);
+  font-size: 46px;
+  line-height: 1;
+  filter: drop-shadow(0 6px 14px rgba(0, 0, 0, 0.5));
+  z-index: 1;
+  transition: transform 0.35s cubic-bezier(0.16, 1, 0.3, 1);
+}
+.card:hover .scene-emoji {
+  transform: translate(-50%, -60%) scale(1.12);
+}
+.res-grid .scene-emoji {
+  font-size: 54px;
+}
+
+/* category chip on template cards */
+.card-body-tpl {
+  display: flex;
+  align-items: center;
+}
+.card-body-tpl .meta {
+  flex: 1;
+  min-width: 0;
+}
+.card-cat {
+  margin-left: auto;
+  flex-shrink: 0;
+  font-size: 11px;
+  font-weight: 700;
+  color: var(--muted);
+  padding: 3px 9px;
+  border-radius: 999px;
+  background: var(--surface-2);
+  border: 1px solid var(--border);
 }
