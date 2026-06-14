@@ -2,980 +2,305 @@
 
 import { useEffect, useMemo, useRef, useState } from "react";
 
-const PRODUCT_LABEL = "AI Game Builder";
-const DEFAULT_PROMPT =
-  "a neon snake game with powerups, boss rounds, and arcade lighting";
+/* --------------------------------------------------------------- content --- */
 
-const QUICK_PROMPTS = [
-  "neon snake",
-  "space shooter",
-  "word puzzle",
-  "brick breaker",
-  "cookie clicker",
-  "text adventure",
+const CYCLE_WORDS = ["playable", "addictive", "arcade", "magical", "yours"];
+
+const SUGGESTIONS = [
+  { label: "Neon snake", icon: "spark", prompt: "a neon snake game with glowing trails, power-ups, and boss rounds" },
+  { label: "Space shooter", icon: "rocket", prompt: "a space shooter defending a station from waves of meteors and alien ships" },
+  { label: "Idle clicker", icon: "coin", prompt: "a cookie-style idle clicker with upgrades, prestige, and satisfying numbers" },
+  { label: "Word puzzle", icon: "grid", prompt: "a daily word puzzle with six guesses, hints, and a streak counter" },
+  { label: "Card battler", icon: "cards", prompt: "a roguelike card battler where each draw explores a new dungeon room" },
+  { label: "Platformer", icon: "flag", prompt: "a one-screen platformer with coins, spikes, moving platforms, and a timer" },
 ];
 
-const WORKSPACE_NAV = [
-  { id: "home", label: "Home", icon: "home" },
-  { id: "search", label: "Search", icon: "search" },
-  { id: "resources", label: "Resources", icon: "compass" },
-  { id: "connectors", label: "Connectors", icon: "nodes" },
+const COMMUNITY = [
+  { title: "Neon Serpent", author: "arcadelab", remixes: "2.4k", scene: "neon", color: "#06d6a0" },
+  { title: "Orbital Defense", author: "starforge", remixes: "1.8k", scene: "space", color: "#5b8cff", prompt: "a space shooter defending a station from meteor waves with upgrades" },
+  { title: "Cookie Empire", author: "idlemakers", remixes: "3.1k", scene: "clicker", color: "#ffc660", prompt: "a cozy cookie clicker with upgrades, prestige levels and golden cookies" },
+  { title: "Daily Word", author: "puzzlefox", remixes: "920", scene: "word", color: "#3ddc84", prompt: "a word puzzle with six guesses, on-screen keyboard, and a streak counter" },
+  { title: "Dungeon Draw", author: "deckwright", remixes: "1.2k", scene: "cards", color: "#b362ff", prompt: "a roguelike card battler exploring a dungeon room by room" },
+  { title: "Coin Rush", author: "pixeljump", remixes: "640", scene: "platformer", color: "#ff7a59", prompt: "a one-screen platformer with coins, spikes and a countdown timer" },
+  { title: "Crown Quest", author: "mythmakers", remixes: "1.5k", scene: "fantasy", color: "#ffd700", prompt: "a fantasy quest game with gold, magic spells and a final boss" },
+  { title: "Arcade 84", author: "retrowave", remixes: "880", scene: "retro", color: "#ff006e", prompt: "a retro arcade game with scanlines, classic colors and a high-score table" },
+  { title: "Neon Serpent II", author: "arcadelab", remixes: "710", scene: "neon", color: "#06d6a0", prompt: "a fast neon snake with portals, combo trails and boss rounds" },
 ];
 
-const PROJECT_NAV = [
-  { id: "projects", label: "All projects", icon: "grid" },
-  { id: "starred", label: "Starred", icon: "star" },
-  { id: "created", label: "Created by me", icon: "user" },
-  { id: "shared", label: "Shared with me", icon: "users" },
+const TABS = ["Popular", "Discover", "Arcade", "Puzzle"];
+
+const BUILD_STEPS = [
+  "Reading your idea",
+  "Designing rules & goals",
+  "Styling the theme & HUD",
+  "Writing the playable build",
 ];
 
-const PROJECTS = [
-  {
-    title: "Neon Snake Lab",
-    prompt: "Arcade snake with luminous trails and boss rounds",
-    status: "Ready",
-    edited: "Edited today",
-    variant: "snake",
-  },
-  {
-    title: "Cookie Empire",
-    prompt: "A cozy clicker about scaling a bakery into an empire",
-    status: "Mock",
-    edited: "Edited yesterday",
-    variant: "clicker",
-  },
-  {
-    title: "Word Master",
-    prompt: "Daily word puzzle with keyboard scoring",
-    status: "Mock",
-    edited: "Edited this week",
-    variant: "word",
-  },
-];
+const DEFAULT_PROMPT = "a neon snake game with glowing trails, power-ups, and boss rounds";
 
-const TEMPLATES = [
-  {
-    title: "Neon arcade",
-    prompt: "a neon snake game with speed boosts and electric walls",
-    tag: "Canvas",
-    variant: "snake",
-  },
-  {
-    title: "Idle empire",
-    prompt: "a cookie clicker game with upgrades and prestige levels",
-    tag: "Clicker",
-    variant: "clicker",
-  },
-  {
-    title: "Daily word",
-    prompt: "a word puzzle with six guesses, hints, and a streak counter",
-    tag: "Puzzle",
-    variant: "word",
-  },
-  {
-    title: "Orbital defense",
-    prompt: "a space shooter defending a station from meteor waves",
-    tag: "Shooter",
-    variant: "space",
-  },
-  {
-    title: "Dungeon cards",
-    prompt: "a card battler where each draw explores a dungeon room",
-    tag: "Cards",
-    variant: "cards",
-  },
-  {
-    title: "Tiny platformer",
-    prompt: "a one-screen platformer with coins, spikes, and a timer",
-    tag: "Platformer",
-    variant: "platformer",
-  },
-];
+/* ----------------------------------------------------------------- icons --- */
 
-const METRICS = [
-  { value: "48", label: "game blueprints" },
-  { value: "3", label: "playable mocks" },
-  { value: "1-click", label: "HTML export" },
-];
-
-function Icon({ name, className = "" }) {
-  const common = {
+function Icon({ name, className }) {
+  const p = {
     viewBox: "0 0 24 24",
     fill: "none",
     stroke: "currentColor",
-    strokeWidth: "1.8",
+    strokeWidth: 1.9,
     strokeLinecap: "round",
     strokeLinejoin: "round",
     className,
     "aria-hidden": true,
   };
-
-  const paths = {
-    home: (
-      <>
-        <path d="m3 10 9-7 9 7" />
-        <path d="M5 10v10h14V10" />
-        <path d="M9 20v-6h6v6" />
-      </>
-    ),
-    search: (
-      <>
-        <circle cx="11" cy="11" r="7" />
-        <path d="m20 20-3.5-3.5" />
-      </>
-    ),
-    compass: (
-      <>
-        <circle cx="12" cy="12" r="9" />
-        <path d="m15 9-2 6-4 2 2-6 4-2Z" />
-      </>
-    ),
-    nodes: (
-      <>
-        <circle cx="6" cy="7" r="2.5" />
-        <circle cx="18" cy="7" r="2.5" />
-        <circle cx="12" cy="18" r="2.5" />
-        <path d="M8.2 8.3 11 15.6M15.8 8.3 13 15.6M8.5 7h7" />
-      </>
-    ),
-    grid: (
-      <>
-        <rect x="4" y="4" width="6" height="6" rx="1.5" />
-        <rect x="14" y="4" width="6" height="6" rx="1.5" />
-        <rect x="4" y="14" width="6" height="6" rx="1.5" />
-        <rect x="14" y="14" width="6" height="6" rx="1.5" />
-      </>
-    ),
-    star: <path d="m12 3 2.7 5.5 6 .9-4.4 4.2 1 6-5.3-2.8-5.3 2.8 1-6-4.4-4.2 6-.9L12 3Z" />,
-    user: (
-      <>
-        <circle cx="12" cy="8" r="4" />
-        <path d="M5 21a7 7 0 0 1 14 0" />
-      </>
-    ),
-    users: (
-      <>
-        <path d="M16 20a5 5 0 0 0-10 0" />
-        <circle cx="11" cy="8" r="4" />
-        <path d="M20 19a4 4 0 0 0-3-3.8" />
-        <path d="M17 5.2a3 3 0 0 1 0 5.6" />
-      </>
-    ),
-    plus: (
-      <>
-        <path d="M12 5v14" />
-        <path d="M5 12h14" />
-      </>
-    ),
-    arrow: <path d="M5 12h13m-5-5 5 5-5 5" />,
+  const shapes = {
+    spark: <path d="M12 3v4m0 10v4m9-9h-4M7 12H3m13.5-5.5-2.8 2.8m-3.4 3.4-2.8 2.8m0-9 2.8 2.8m3.4 3.4 2.8 2.8" />,
+    rocket: <><path d="M5 15c-1.5 1.5-2 5-2 5s3.5-.5 5-2" /><path d="M9 12c2-5 5-8 11-8 0 6-3 9-8 11l-3-3Z" /><circle cx="14.5" cy="9.5" r="1.5" /></>,
+    coin: <><circle cx="12" cy="12" r="8" /><path d="M9.5 9.5h3.5a2 2 0 0 1 0 4H9.5m1.5-6v2m0 6v2" /></>,
+    grid: <><rect x="4" y="4" width="7" height="7" rx="1.5" /><rect x="13" y="4" width="7" height="7" rx="1.5" /><rect x="4" y="13" width="7" height="7" rx="1.5" /><rect x="13" y="13" width="7" height="7" rx="1.5" /></>,
+    cards: <><rect x="3" y="6" width="11" height="14" rx="2" /><path d="M9 4h8a2 2 0 0 1 2 2v10" /></>,
+    flag: <><path d="M5 21V4" /><path d="M5 4h11l-2 3 2 3H5" /></>,
+    send: <path d="M12 20V5m0 0-6 6m6-6 6 6" />,
+    plus: <path d="M12 5v14M5 12h14" />,
+    attach: <path d="M21 11.5 12 20a5 5 0 0 1-7-7l8.5-8.5a3.5 3.5 0 0 1 5 5L10 17a2 2 0 0 1-3-3l7.5-7.5" />,
+    globe: <><circle cx="12" cy="12" r="9" /><path d="M3 12h18M12 3a14 14 0 0 1 0 18M12 3a14 14 0 0 0 0 18" /></>,
+    chevron: <path d="m6 9 6 6 6-6" />,
+    arrowLeft: <path d="M19 12H5m6-7-7 7 7 7" />,
+    refresh: <><path d="M21 12a9 9 0 1 1-2.6-6.4" /><path d="M21 4v5h-5" /></>,
+    download: <><path d="M12 3v12m0 0 4-4m-4 4-4-4" /><path d="M4 17v2a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2v-2" /></>,
+    play: <path d="M7 5v14l12-7-12-7Z" fill="currentColor" stroke="none" />,
+    remix: <><path d="M4 7h11a4 4 0 0 1 0 8H9" /><path d="m12 12-3 3 3 3" /><path d="M4 7l3-3M4 7l3 3" /></>,
+    check: <path d="m5 12 5 5 9-11" />,
     bolt: <path d="M13 2 4 14h7l-1 8 10-13h-7l1-7Z" />,
-    gift: (
-      <>
-        <rect x="3" y="8" width="18" height="13" rx="2" />
-        <path d="M3 12h18M12 8v13" />
-        <path d="M12 8H8.5A2.5 2.5 0 1 1 12 4.5V8Z" />
-        <path d="M12 8h3.5A2.5 2.5 0 1 0 12 4.5V8Z" />
-      </>
-    ),
-    download: (
-      <>
-        <path d="M12 3v12" />
-        <path d="m7 10 5 5 5-5" />
-        <path d="M5 21h14" />
-      </>
-    ),
-    reload: (
-      <>
-        <path d="M20 12a8 8 0 1 1-2.3-5.7" />
-        <path d="M20 4v6h-6" />
-      </>
-    ),
+    controller: <><path d="M6 11h4m-2-2v4" /><circle cx="15.5" cy="11" r="1" /><circle cx="18" cy="13.5" r="1" /><path d="M7 6h10a4 4 0 0 1 4 4l.8 5.2a2.5 2.5 0 0 1-4.7 1.4L16 15H8l-1.1 1.6a2.5 2.5 0 0 1-4.7-1.4L3 10a4 4 0 0 1 4-4Z" /></>,
   };
-
-  return <svg {...common}>{paths[name] || paths.grid}</svg>;
+  return <svg {...p}>{shapes[name] || shapes.spark}</svg>;
 }
 
-function LogoMark() {
+function BrandLogo() {
   return (
-    <div className="logo-mark" aria-hidden>
-      <span />
-    </div>
+    <span className="brand-logo">
+      <Icon name="controller" />
+    </span>
   );
 }
 
-function Sidebar({ activeView, setActiveView, hasGame, html, downloadGame }) {
-  function shareBuilder() {
-    navigator.clipboard?.writeText(window.location.href).catch(() => {});
+/* ------------------------------------------------------------- composer --- */
+
+function Composer({ value, onChange, onSubmit, loading, placeholder, compact }) {
+  const ref = useRef(null);
+  const [focus, setFocus] = useState(false);
+
+  useEffect(() => {
+    const el = ref.current;
+    if (!el) return;
+    el.style.height = "auto";
+    el.style.height = Math.min(el.scrollHeight, compact ? 120 : 220) + "px";
+  }, [value, compact]);
+
+  function handleKey(e) {
+    if (e.key === "Enter" && (e.metaKey || e.ctrlKey)) {
+      e.preventDefault();
+      onSubmit();
+    }
   }
 
   return (
-    <aside className="app-sidebar">
-      <div className="sidebar-head">
-        <LogoMark />
-        <button className="workspace-switch" type="button" onClick={() => setActiveView("home")}>
-          <span className="workspace-initial">A</span>
-          <span>Builder workspace</span>
-          <span className="workspace-chevron">v</span>
-        </button>
-      </div>
-
-      <nav className="nav-stack" aria-label="Workspace">
-        {WORKSPACE_NAV.map((item) => (
-          <button
-            key={item.id}
-            type="button"
-            className={`side-nav-button ${activeView === item.id ? "is-active" : ""}`}
-            onClick={() => setActiveView(item.id)}
-          >
-            <Icon name={item.icon} />
-            <span>{item.label}</span>
-            {item.id === "search" && <kbd>Ctrl K</kbd>}
-          </button>
-        ))}
-      </nav>
-
-      <div className="nav-label">Projects</div>
-      <nav className="nav-stack" aria-label="Projects">
-        {PROJECT_NAV.map((item) => (
-          <button
-            key={item.id}
-            type="button"
-            className={`side-nav-button ${activeView === item.id ? "is-active" : ""}`}
-            onClick={() => setActiveView(item.id)}
-          >
-            <Icon name={item.icon} />
-            <span>{item.label}</span>
-          </button>
-        ))}
-      </nav>
-
-      <div className="nav-label">Recents</div>
-      <button
-        type="button"
-        className="recent-link"
-        onClick={() => setActiveView(hasGame ? "preview" : "projects")}
-      >
-        Neon Snake Lab
-      </button>
-
-      <div className="sidebar-spacer" />
-
-      <button type="button" className="sidebar-card" onClick={shareBuilder}>
-        <span>
-          <strong>Share builder</strong>
-          <small>Copy link to this workspace</small>
-        </span>
-        <Icon name="gift" />
-      </button>
-      <button
-        type="button"
-        className="sidebar-card sidebar-card-accent"
-        onClick={() => html ? downloadGame() : setActiveView("preview")}
-      >
-        <span>
-          <strong>Ship faster</strong>
-          <small>{html ? "Download your game now" : "Export playable HTML"}</small>
-        </span>
-        <Icon name="bolt" />
-      </button>
-    </aside>
-  );
-}
-
-function MobileTopbar({ activeView, setActiveView }) {
-  return (
-    <header className="mobile-topbar">
-      <div className="mobile-brand">
-        <LogoMark />
-        <span>{PRODUCT_LABEL}</span>
-      </div>
-      <select
-        value={activeView}
-        onChange={(event) => setActiveView(event.target.value)}
-        aria-label="Select view"
-      >
-        {[...WORKSPACE_NAV, ...PROJECT_NAV, { id: "preview", label: "Preview" }].map(
-          (item) => (
-            <option key={item.id} value={item.id}>
-              {item.label}
-            </option>
-          )
-        )}
-      </select>
-    </header>
-  );
-}
-
-function PromptComposer({
-  prompt,
-  setPrompt,
-  generate,
-  planGame,
-  loading,
-  planning,
-  compact = false,
-}) {
-  const textareaRef = useRef(null);
-
-  return (
-    <div className={`composer ${compact ? "composer-compact" : ""}`}>
+    <div className={`composer ${focus ? "is-focus" : ""}`}>
       <textarea
-        ref={textareaRef}
-        value={prompt}
-        onChange={(event) => setPrompt(event.target.value)}
-        placeholder="Describe the game you want to build..."
-        rows={compact ? 3 : 4}
+        ref={ref}
+        value={value}
+        onChange={(e) => onChange(e.target.value)}
+        onFocus={() => setFocus(true)}
+        onBlur={() => setFocus(false)}
+        onKeyDown={handleKey}
+        placeholder={placeholder}
+        rows={1}
       />
-      <div className="composer-actions">
-        <button
-          type="button"
-          className="round-icon-button"
-          aria-label="Add context"
-          onClick={() => textareaRef.current?.focus()}
-        >
-          <Icon name="plus" />
-        </button>
-        <div className="composer-right">
-          {planGame && (
-            <button
-              type="button"
-              onClick={() => planGame()}
-              disabled={planning || !prompt.trim()}
-              style={{
-                background: "transparent",
-                border: "1px solid rgba(255,255,255,0.2)",
-                color: "rgba(255,255,255,0.7)",
-                borderRadius: "999px",
-                padding: "10px 18px",
-                fontSize: "14px",
-                cursor: planning || !prompt.trim() ? "not-allowed" : "pointer",
-                opacity: planning || !prompt.trim() ? 0.5 : 1,
-              }}
-            >
-              {planning ? "Thinking..." : "Preview →"}
+      <div className="composer-bar">
+        <div className="composer-bar-left">
+          <button type="button" className="icon-pill" title="Attach a reference (coming soon)">
+            <Icon name="attach" />
+          </button>
+          {!compact && (
+            <button type="button" className="icon-pill" title="Visibility">
+              <Icon name="globe" />
+              Public
+              <Icon name="chevron" />
             </button>
           )}
-          <button
-            type="button"
-            onClick={() => generate()}
-            disabled={loading || planning}
-            style={{
-              background: "transparent",
-              border: "1px solid rgba(255,255,255,0.2)",
-              color: "rgba(255,255,255,0.7)",
-              borderRadius: "999px",
-              padding: "10px 18px",
-              fontSize: "14px",
-              cursor: loading || planning ? "not-allowed" : "pointer",
-              opacity: loading || planning ? 0.5 : 1,
-            }}
-          >
-            {loading ? "Building..." : "Generate →"}
-          </button>
+        </div>
+        <button
+          type="button"
+          className={`send-btn ${loading ? "is-loading" : ""}`}
+          onClick={onSubmit}
+          disabled={loading || !value.trim()}
+          aria-label="Build game"
+        >
+          <Icon name={loading ? "refresh" : "send"} />
+        </button>
+      </div>
+    </div>
+  );
+}
+
+/* -------------------------------------------------------------- scenes ---- */
+
+function Scene({ scene, title }) {
+  return (
+    <div className={`scene scene-${scene}`}>
+      <span className="scene-title">{title}</span>
+    </div>
+  );
+}
+
+function CommunityCard({ item, onOpen, index }) {
+  return (
+    <button
+      type="button"
+      className="card"
+      style={{ animationDelay: `${0.04 * index}s` }}
+      onClick={() => onOpen(item)}
+    >
+      <div className="card-thumb">
+        <Scene scene={item.scene} title={item.title} />
+        <div className="play">
+          <span>
+            <Icon name="play" /> Remix this game
+          </span>
         </div>
       </div>
-    </div>
-  );
-}
-
-function QuickPrompts({ setPrompt, generate }) {
-  return (
-    <div className="quick-prompt-row">
-      {QUICK_PROMPTS.map((chip) => (
-        <button
-          key={chip}
-          type="button"
-          className="chip-button"
-          onClick={() => {
-            setPrompt(chip);
-          }}
-          onDoubleClick={() => generate(chip)}
-        >
-          {chip}
-        </button>
-      ))}
-    </div>
-  );
-}
-
-function GameThumbnail({ variant = "snake", title }) {
-  return (
-    <div className={`game-thumbnail thumb-${variant}`}>
-      <div className="thumb-topline" />
-      <div className="thumb-grid">
-        <span />
-        <span />
-        <span />
-        <span />
-      </div>
-      <div className="thumb-title">{title}</div>
-      <div className="thumb-hud">
-        <span />
-        <span />
-        <span />
-      </div>
-    </div>
-  );
-}
-
-function ProjectCard({ project, onOpen }) {
-  return (
-    <button type="button" className="project-card" onClick={onOpen}>
-      <GameThumbnail variant={project.variant} title={project.title} />
-      <div className="project-meta">
-        <span className="avatar-dot">{project.title[0]}</span>
-        <span>
-          <strong>{project.title}</strong>
-          <small>{project.edited}</small>
+      <div className="card-body">
+        <span className="card-ava" style={{ background: item.color }}>
+          {item.author[0].toUpperCase()}
         </span>
-        <em>{project.status}</em>
+        <span className="meta">
+          <strong>{item.title}</strong>
+          <small>by {item.author}</small>
+        </span>
+        <span className="remix">
+          <Icon name="remix" />
+          {item.remixes}
+        </span>
       </div>
     </button>
   );
 }
 
-function TemplateCard({ template, onUse }) {
-  return (
-    <article className="template-card">
-      <GameThumbnail variant={template.variant} title={template.title} />
-      <div className="template-copy">
-        <span>{template.tag}</span>
-        <h3>{template.title}</h3>
-        <p>{template.prompt}</p>
-      </div>
-      <button type="button" className="ghost-button" onClick={() => onUse(template.prompt)}>
-        Use template
-      </button>
-    </article>
-  );
-}
+/* ----------------------------------------------------------- workspace ---- */
 
-function PlanCard({ plan, setPlan, generate }) {
-  const lines = plan.split("\n").filter((line) => line.trim());
-
-  return (
-    <div
-      style={{
-        maxWidth: "680px",
-        margin: "24px auto 0",
-        background: "rgba(13,148,136,0.08)",
-        border: "1px solid rgba(13,148,136,0.3)",
-        borderRadius: "16px",
-        padding: "24px 28px",
-      }}
-    >
-      <div
-        style={{
-          color: "#0d9488",
-          fontSize: "11px",
-          fontWeight: 700,
-          letterSpacing: "2px",
-          marginBottom: "16px",
-        }}
-      >
-        GAME CONCEPT
-      </div>
-      {lines.map((line, index) => (
-        <p
-          key={index}
-          style={{
-            color: index === 0 ? "#fff" : "rgba(255,255,255,0.65)",
-            fontSize: index === 0 ? "20px" : "14px",
-            fontWeight: index === 0 ? 700 : 400,
-            lineHeight: 1.7,
-            margin: index === 0 ? "0 0 12px" : "0 0 8px",
-          }}
-        >
-          {line}
-        </p>
-      ))}
-      <button
-        type="button"
-        onClick={() => generate()}
-        style={{
-          background: "#0d9488",
-          color: "#fff",
-          border: "none",
-          borderRadius: "999px",
-          padding: "12px",
-          width: "100%",
-          marginTop: "20px",
-          fontSize: "14px",
-          fontWeight: 600,
-          cursor: "pointer",
-        }}
-      >
-        Build this game →
-      </button>
-      <button
-        type="button"
-        onClick={() => setPlan(null)}
-        style={{
-          background: "none",
-          border: "none",
-          color: "rgba(255,255,255,0.3)",
-          fontSize: "12px",
-          marginTop: "12px",
-          cursor: "pointer",
-          display: "block",
-          width: "100%",
-          textAlign: "center",
-        }}
-      >
-        Clear
-      </button>
-    </div>
-  );
-}
-
-function HomeView({
-  prompt,
-  setPrompt,
-  generate,
-  planGame,
+function Workspace({
+  userPrompt,
   plan,
-  setPlan,
-  loading,
-  planning,
-  error,
-  setActiveView,
-  openPreview,
-}) {
-  return (
-    <div className="view-stack">
-      <section className="hero-stage">
-        <div className="hero-glow" aria-hidden />
-        <button type="button" className="connector-pill" onClick={() => setActiveView("connectors")}>
-          <span className="mini-badges">
-            <i />
-            <i />
-            <i />
-          </span>
-          Connect all your tools
-          <Icon name="arrow" />
-        </button>
-        <h1>What should we make playable?</h1>
-        <p>
-          Turn a rough idea into a browser game, preview it instantly, then export
-          the whole thing as one HTML file.
-        </p>
-        <PromptComposer
-          prompt={prompt}
-          setPrompt={setPrompt}
-          generate={generate}
-          planGame={planGame}
-          loading={loading}
-          planning={planning}
-        />
-        <QuickPrompts setPrompt={setPrompt} generate={generate} />
-        {plan && <PlanCard plan={plan} setPlan={setPlan} generate={generate} />}
-        {error && <div className="error-banner">{error}</div>}
-      </section>
-
-      <section className="project-shelf">
-        <div className="section-head">
-          <div>
-            <span>Workspace</span>
-            <h2>Keep building from your last idea</h2>
-          </div>
-          <button type="button" className="text-link" onClick={() => setActiveView("projects")}>
-            Browse all
-            <Icon name="arrow" />
-          </button>
-        </div>
-        <div className="featured-project">
-          <ProjectCard
-            project={PROJECTS[0]}
-            onOpen={openPreview}
-          />
-          <div className="featured-copy">
-            <span className="eyebrow">Live prototype</span>
-            <h3>Neon Snake Lab</h3>
-            <p>
-              A complete sandboxed canvas game with scoring, restart, keyboard
-              controls, and a vivid arcade treatment.
-            </p>
-            <button type="button" className="primary-button" onClick={openPreview}>
-              Open preview
-            </button>
-          </div>
-        </div>
-      </section>
-
-      <section className="template-strip">
-        <div className="section-head">
-          <div>
-            <span>Resources</span>
-            <h2>Start from a game pattern</h2>
-          </div>
-          <button
-            type="button"
-            className="text-link"
-            onClick={() => setActiveView("resources")}
-          >
-            View library
-            <Icon name="arrow" />
-          </button>
-        </div>
-        <div className="template-grid compact-grid">
-          {TEMPLATES.slice(0, 3).map((template) => (
-            <TemplateCard
-              key={template.title}
-              template={template}
-              onUse={(nextPrompt) => {
-                setPrompt(nextPrompt);
-                generate(nextPrompt);
-              }}
-            />
-          ))}
-        </div>
-      </section>
-
-      <section className="numbers-band">
-        {METRICS.map((metric) => (
-          <div key={metric.label} className="metric-card">
-            <strong>{metric.value}</strong>
-            <span>{metric.label}</span>
-          </div>
-        ))}
-      </section>
-    </div>
-  );
-}
-
-function ProjectsView({ title = "Projects", openPreview, setActiveView }) {
-  const [query, setQuery] = useState("");
-  const [statusFilter, setStatusFilter] = useState("Any status");
-  const statuses = ["Any status", "Ready", "Mock"];
-
-  const filtered = useMemo(() => {
-    const q = query.trim().toLowerCase();
-    return PROJECTS.filter((p) => {
-      const matchesQuery = !q || `${p.title} ${p.prompt}`.toLowerCase().includes(q);
-      const matchesStatus = statusFilter === "Any status" || p.status === statusFilter;
-      return matchesQuery && matchesStatus;
-    });
-  }, [query, statusFilter]);
-
-  return (
-    <div className="page-panel">
-      <div className="toolbar-head">
-        <div>
-          <h1>{title}</h1>
-          <p>Every generated concept, mock, and playable export in one place.</p>
-        </div>
-        <button type="button" className="primary-button" onClick={() => setActiveView("home")}>
-          <Icon name="plus" />
-          Create
-        </button>
-      </div>
-      <div className="filter-row">
-        <label className="search-field">
-          <Icon name="search" />
-          <input
-            value={query}
-            onChange={(e) => setQuery(e.target.value)}
-            placeholder="Search projects..."
-          />
-        </label>
-        <button type="button" style={{ opacity: 0.5 }}>Last edited</button>
-        {statuses.map((s) => (
-          <button
-            key={s}
-            type="button"
-            onClick={() => setStatusFilter(s)}
-            style={{ opacity: statusFilter === s ? 1 : 0.5, fontWeight: statusFilter === s ? 600 : 400 }}
-          >
-            {s}
-          </button>
-        ))}
-      </div>
-      <h2 className="subhead">Active in last 60 days</h2>
-      <div className="project-grid">
-        {filtered.length > 0 ? filtered.map((project) => (
-          <ProjectCard
-            key={project.title}
-            project={project}
-            onOpen={openPreview}
-          />
-        )) : (
-          <p style={{ color: "rgba(255,255,255,0.4)", padding: "24px 0" }}>No projects match your search.</p>
-        )}
-      </div>
-    </div>
-  );
-}
-
-function ResourcesView({ searchMode = false, query, setQuery, setPrompt, generate }) {
-  const templates = useMemo(() => {
-    const q = query.trim().toLowerCase();
-    if (!q) return TEMPLATES;
-    return TEMPLATES.filter((template) =>
-      `${template.title} ${template.prompt} ${template.tag}`.toLowerCase().includes(q)
-    );
-  }, [query]);
-
-  return (
-    <div className="page-panel">
-      <div className="toolbar-head">
-        <div>
-          <h1>{searchMode ? "Search" : "Resources"}</h1>
-          <p>Reusable prompts and playable patterns for your next game.</p>
-        </div>
-      </div>
-      <label className="resource-search">
-        <Icon name="search" />
-        <input
-          value={query}
-          onChange={(event) => setQuery(event.target.value)}
-          placeholder="Search templates, genres, mechanics..."
-        />
-      </label>
-      <div className="template-grid">
-        {templates.map((template) => (
-          <TemplateCard
-            key={template.title}
-            template={template}
-            onUse={(nextPrompt) => {
-              setPrompt(nextPrompt);
-              generate(nextPrompt);
-            }}
-          />
-        ))}
-      </div>
-    </div>
-  );
-}
-
-function ConnectorsView() {
-  const connectors = ["Design brief", "Game rules", "Art direction", "Export target"];
-  return (
-    <div className="page-panel connectors-panel">
-      <div className="toolbar-head">
-        <div>
-          <h1>Connectors</h1>
-          <p>Bring structured context into the game generator.</p>
-        </div>
-      </div>
-      <div className="connector-grid">
-        {connectors.map((connector) => (
-          <article key={connector} className="connector-card">
-            <Icon name="nodes" />
-            <h2>{connector}</h2>
-            <p>Ready for a future integration. For now, prompts drive the build.</p>
-          </article>
-        ))}
-      </div>
-    </div>
-  );
-}
-
-function RatingBar({ generationId, rated, setRated, setShowRating, setShowThanks }) {
-  function handleRating(stars) {
-    console.log("Rating submitted:", { generationId, rating: stars });
-    setRated(true);
-    setShowRating(false);
-    setShowThanks(true);
-    setTimeout(() => setShowThanks(false), 2000);
-  }
-
-  return (
-    <div
-      style={{
-        width: "100%",
-        background: "#111",
-        padding: "10px 20px",
-        display: "flex",
-        alignItems: "center",
-        gap: "16px",
-      }}
-    >
-      <span style={{ color: "rgba(255,255,255,0.5)", fontSize: "13px" }}>
-        How was it?
-      </span>
-      {[1, 2, 3, 4, 5].map((stars) => (
-        <button
-          key={stars}
-          type="button"
-          onClick={() => handleRating(stars)}
-          aria-label={`Rate ${stars} stars`}
-          style={{
-            width: "28px",
-            height: "28px",
-            borderRadius: "50%",
-            border: "1px solid rgba(255,255,255,0.2)",
-            background: "transparent",
-            color: "rgba(255,255,255,0.6)",
-            fontSize: "12px",
-            cursor: "pointer",
-            display: "flex",
-            alignItems: "center",
-            justifyContent: "center",
-          }}
-        >
-          {stars}
-        </button>
-      ))}
-    </div>
-  );
-}
-
-function PreviewView({
   html,
-  prompt,
-  setPrompt,
-  generatedPrompt,
   loading,
-  planning,
+  stepIndex,
+  percent,
+  followup,
+  setFollowup,
+  onFollowup,
+  onBack,
+  onRebuild,
+  onDownload,
   error,
-  generate,
-  planGame,
-  reset,
-  downloadGame,
-  generationId,
-  showRating,
-  setShowRating,
-  rated,
-  setRated,
-  showThanks,
-  setShowThanks,
 }) {
+  const feedRef = useRef(null);
   useEffect(() => {
-    if (!html || rated) return;
-
-    const timer = setTimeout(() => {
-      setShowRating(true);
-    }, 3000);
-
-    return () => clearTimeout(timer);
-  }, [html, rated, setShowRating]);
-
-  const [showFullBrief, setShowFullBrief] = useState(false);
-  const briefText = generatedPrompt || prompt || DEFAULT_PROMPT;
+    feedRef.current?.scrollTo({ top: feedRef.current.scrollHeight, behavior: "smooth" });
+  }, [stepIndex, html, plan]);
 
   return (
-    <div className="preview-workspace">
-      <section className="build-panel">
-        <div className="build-panel-head">
-          <LogoMark />
-          <div>
-            <h1>{PRODUCT_LABEL}</h1>
-            <p>Previewing last generated version</p>
-          </div>
-        </div>
-
-        <article className="brief-card">
-          <h2>Game brief</h2>
-          <p style={{ WebkitLineClamp: showFullBrief ? "unset" : 2, overflow: "hidden", display: "-webkit-box", WebkitBoxOrient: "vertical" }}>
-            {briefText}
-          </p>
-          <button type="button" onClick={() => setShowFullBrief((v) => !v)}>
-            {showFullBrief ? "Show less" : "Show more"}
+    <div className="ws">
+      <aside className="ws-chat">
+        <div className="ws-chat-head">
+          <BrandLogo />
+          <span className="brand">Gamecraft</span>
+          <button type="button" className="ws-back" onClick={onBack} aria-label="Back to home">
+            <Icon name="arrowLeft" />
           </button>
-        </article>
-
-        <div className="build-log">
-          <span>Thought for 7s</span>
-          <p>
-            Built a focused browser game with a complete start state, live
-            controls, scoring, restart behavior, and a polished visual skin.
-          </p>
         </div>
 
-        <div className="result-card">
-          <div className="result-icon">
-            <Icon name="grid" />
+        <div className="ws-feed" ref={feedRef}>
+          <div className="bubble bubble-user">{userPrompt}</div>
+
+          <div className="bubble bubble-ai">
+            <div className="who">
+              <span className="dot-logo" /> Gamecraft
+            </div>
+            {plan ? plan : "On it — turning your idea into a playable build."}
+            <div className="build-steps">
+              {BUILD_STEPS.map((label, i) => {
+                const cls =
+                  html && !loading
+                    ? "done"
+                    : i < stepIndex
+                      ? "done"
+                      : i === stepIndex && loading
+                        ? "active"
+                        : "";
+                return (
+                  <div key={label} className={`build-step ${cls}`}>
+                    <span className="tick">{cls === "done" && <Icon name="check" />}</span>
+                    {label}
+                  </div>
+                );
+              })}
+            </div>
+            {loading && (
+              <div className="progress">
+                <i style={{ width: `${percent}%` }} />
+              </div>
+            )}
           </div>
-          <div>
-            <strong>{html ? "Created playable game" : "Ready to generate"}</strong>
-            <small>
-              {html
-                ? "Open the preview, test it, then download the HTML."
-                : "Describe a game and build the first version."}
-            </small>
-          </div>
+
+          {html && !loading && (
+            <div className="bubble bubble-ai">
+              <div className="who">
+                <span className="dot-logo" /> Gamecraft
+              </div>
+              Your game is live in the preview. Want changes? Just tell me — e.g. “make it faster”, “add a boss”, or “use a retro theme”.
+            </div>
+          )}
+
+          {error && <div className="err">{error}</div>}
         </div>
 
-        <div className="preview-composer">
-          <PromptComposer
-            prompt={prompt}
-            setPrompt={setPrompt}
-            generate={generate}
-            planGame={planGame}
+        <div className="ws-composer">
+          <Composer
+            value={followup}
+            onChange={setFollowup}
+            onSubmit={onFollowup}
             loading={loading}
-            planning={planning}
+            placeholder="Ask for a change…"
             compact
           />
-          {error && <div className="error-banner">{error}</div>}
         </div>
-      </section>
+      </aside>
 
-      <section className="preview-panel">
-        {showRating && !rated && html && (
-          <RatingBar
-            generationId={generationId}
-            rated={rated}
-            setRated={setRated}
-            setShowRating={setShowRating}
-            setShowThanks={setShowThanks}
-          />
-        )}
-        {showThanks && (
-          <div
-            style={{
-              width: "100%",
-              background: "#111",
-              padding: "10px 20px",
-              color: "#0d9488",
-              fontSize: "13px",
-              textAlign: "center",
-            }}
-          >
-            Thanks! We&apos;ll make the next one better.
-          </div>
-        )}
-        <header className="preview-toolbar">
-          <div className="preview-url">
-            <span />
-            <strong>/ preview</strong>
-          </div>
-          <div className="preview-actions">
-            <button type="button" className="icon-text-button" onClick={reset}>
-              <Icon name="plus" />
-              New game
+      <section className="ws-view">
+        <header className="ws-bar">
+          <span className="ws-url">
+            <span className="live" /> preview · gamecraft.app
+          </span>
+          <div className="ws-bar-actions">
+            <button type="button" className="tool-btn" onClick={onRebuild} disabled={loading}>
+              <Icon name="refresh" /> Rebuild
             </button>
-            <button type="button" className="icon-text-button" onClick={() => generate()}>
-              <Icon name="reload" />
-              Rebuild
-            </button>
-            <button
-              type="button"
-              className="icon-text-button is-primary"
-              onClick={downloadGame}
-              disabled={!html}
-            >
-              <Icon name="download" />
-              Download
+            <button type="button" className="tool-btn primary" onClick={onDownload} disabled={!html}>
+              <Icon name="download" /> Export
             </button>
           </div>
         </header>
-
-        <div className="iframe-shell">
+        <div className="ws-stage">
           {html ? (
-            <iframe
-              title="Generated game"
-              srcDoc={html}
-              sandbox="allow-scripts"
-              className="game-frame"
-            />
+            <div className="frame-shell">
+              <iframe title="Generated game" srcDoc={wrapPreviewHtml(html)} sandbox="allow-scripts" />
+            </div>
           ) : (
-            <div className="empty-preview">
-              <LogoMark />
-              <h2>No game generated yet</h2>
-              <p>Start with a prompt or template to fill this preview.</p>
-              <button type="button" className="primary-button" onClick={() => generate(DEFAULT_PROMPT)}>
-                Build starter game
-              </button>
+            <div className="stage-empty">
+              <div>
+                <div className="spinner" />
+                <h3>Building your game…</h3>
+                <p>{BUILD_STEPS[Math.min(stepIndex, BUILD_STEPS.length - 1)]}</p>
+              </div>
             </div>
           )}
         </div>
@@ -984,75 +309,124 @@ function PreviewView({
   );
 }
 
+/* --------------------------------------------------------------- helpers --- */
+
 function safeFileName(value) {
-  const slug = value
+  const slug = (value || "")
     .toLowerCase()
     .replace(/[^a-z0-9]+/g, "-")
     .replace(/^-+|-+$/g, "")
     .slice(0, 48);
-  return slug || "generated-game";
+  return slug || "gamecraft-game";
 }
 
+function wrapPreviewHtml(html) {
+  if (!html || typeof html !== "string") return html;
+  const fallbackScript = `
+  <script>
+  (function () {
+    function findStartButton() {
+      return document.getElementById('startBtn')
+        || Array.from(document.querySelectorAll('button')).find((b) => /start|play/i.test(b.textContent || ''))
+        || null;
+    }
+    function wire() {
+      var b = findStartButton();
+      if (!b) return;
+      function go(e){ e.preventDefault(); e.stopPropagation();
+        if (typeof window.startGame === 'function') return window.startGame();
+        if (typeof window.__gamecraftStart === 'function') return window.__gamecraftStart();
+      }
+      b.addEventListener('click', go, false);
+      b.onclick = go;
+    }
+    if (document.readyState === 'loading') {
+      document.addEventListener('DOMContentLoaded', wire, { once: true });
+    } else { setTimeout(wire, 0); }
+  })();
+  </script>`;
+  return html.trim().endsWith("</body>")
+    ? html.replace(/<\/body>/i, `${fallbackScript}</body>`)
+    : `${html}\n${fallbackScript}`;
+}
+
+/* ------------------------------------------------------------------ page --- */
+
 export default function Home() {
-  const [activeView, setActiveView] = useState("home");
   const [prompt, setPrompt] = useState("");
+  const [followup, setFollowup] = useState("");
+  const [view, setView] = useState("home"); // home | workspace
   const [html, setHtml] = useState("");
-  const [generatedPrompt, setGeneratedPrompt] = useState("");
+  const [plan, setPlan] = useState("");
+  const [activePrompt, setActivePrompt] = useState("");
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState("");
-  const [query, setQuery] = useState("");
-  const [plan, setPlan] = useState(null);
-  const [planning, setPlanning] = useState(false);
-  const [generationId, setGenerationId] = useState(null);
-  const [showRating, setShowRating] = useState(false);
-  const [rated, setRated] = useState(false);
-  const [showThanks, setShowThanks] = useState(false);
+  const [tab, setTab] = useState("Popular");
+  const [toast, setToast] = useState("");
 
-  async function planGame(overridePrompt) {
-    const requestPrompt = (overridePrompt ?? prompt).trim();
-    if (!requestPrompt) {
-      setError("Describe a game first.");
-      return;
-    }
+  const [wordIndex, setWordIndex] = useState(0);
+  const [stepIndex, setStepIndex] = useState(0);
+  const [percent, setPercent] = useState(0);
+  const stepTimer = useRef(null);
 
-    setPrompt(requestPrompt);
-    setPlanning(true);
-    setError("");
+  // cycling hero word
+  useEffect(() => {
+    if (view !== "home") return;
+    const t = setInterval(() => setWordIndex((i) => (i + 1) % CYCLE_WORDS.length), 2400);
+    return () => clearInterval(t);
+  }, [view]);
 
-    try {
-      const res = await fetch("/api/generate", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ prompt: requestPrompt, mode: "plan" }),
-      });
-      const data = await res.json();
-      if (!res.ok) {
-        throw new Error(data?.error || "Planning failed.");
-      }
-      setPlan(data.plan);
-    } catch (err) {
-      setError(err.message || "Something went wrong.");
-    } finally {
-      setPlanning(false);
+  // toast auto-dismiss
+  useEffect(() => {
+    if (!toast) return;
+    const t = setTimeout(() => setToast(""), 2200);
+    return () => clearTimeout(t);
+  }, [toast]);
+
+  function clearStepTimer() {
+    if (stepTimer.current) {
+      clearInterval(stepTimer.current);
+      stepTimer.current = null;
     }
   }
 
-  async function generate(overridePrompt) {
-    const requestPrompt = (overridePrompt ?? prompt).trim();
+  function runStepAnimation() {
+    clearStepTimer();
+    setStepIndex(0);
+    setPercent(8);
+    let i = 0;
+    stepTimer.current = setInterval(() => {
+      i += 1;
+      setStepIndex(Math.min(i, BUILD_STEPS.length - 1));
+      setPercent((p) => Math.min(94, p + 22));
+    }, 720);
+  }
+
+  async function generate(rawPrompt) {
+    const requestPrompt = (rawPrompt ?? prompt).trim();
     if (!requestPrompt) {
       setError("Describe a game first.");
       return;
     }
-
+    setActivePrompt(requestPrompt);
     setPrompt(requestPrompt);
-    setPlan(null);
-    setLoading(true);
+    setView("workspace");
+    setHtml("");
+    setPlan("");
     setError("");
-    setShowRating(false);
-    setRated(false);
-    setShowThanks(false);
-    setGenerationId(null);
+    setLoading(true);
+    runStepAnimation();
     const startedAt = Date.now();
+
+    // kick off a quick concept in parallel for the chat panel
+    fetch("/api/generate", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ prompt: requestPrompt, mode: "plan" }),
+    })
+      .then((r) => r.json())
+      .then((d) => d?.plan && setPlan(d.plan))
+      .catch(() => {});
 
     try {
       const res = await fetch("/api/generate", {
@@ -1061,124 +435,238 @@ export default function Home() {
         body: JSON.stringify({ prompt: requestPrompt, mode: "generate" }),
       });
       const data = await res.json();
-      if (!res.ok) {
-        throw new Error(data?.error || "Generation failed.");
-      }
+      if (!res.ok) throw new Error(data?.error || "Generation failed.");
 
       const elapsed = Date.now() - startedAt;
-      if (elapsed < 650) {
-        await new Promise((resolve) => setTimeout(resolve, 650 - elapsed));
-      }
+      if (elapsed < 1100) await new Promise((r) => setTimeout(r, 1100 - elapsed));
 
       setHtml(data.html);
-      setGeneratedPrompt(requestPrompt);
-      setActiveView("preview");
+      setPercent(100);
+      setStepIndex(BUILD_STEPS.length);
     } catch (err) {
       setError(err.message || "Something went wrong.");
     } finally {
+      clearStepTimer();
       setLoading(false);
     }
   }
 
-  function reset() {
-    setHtml("");
-    setGeneratedPrompt("");
-    setPrompt("");
-    setError("");
-    setPlan(null);
-    setShowRating(false);
-    setRated(false);
-    setShowThanks(false);
-    setGenerationId(null);
-    setActiveView("home");
-  }
-
-  function openPreview() {
-    if (!html) {
-      generate(DEFAULT_PROMPT);
-      return;
-    }
-    setActiveView("preview");
+  function handleFollowup() {
+    const text = followup.trim();
+    if (!text) return;
+    const combined = `${activePrompt}\n\nRevision: ${text}`;
+    setFollowup("");
+    generate(combined.slice(0, 280));
   }
 
   function downloadGame() {
     if (!html) return;
     const blob = new Blob([html], { type: "text/html;charset=utf-8" });
     const url = URL.createObjectURL(blob);
-    const anchor = document.createElement("a");
-    anchor.href = url;
-    anchor.download = `${safeFileName(generatedPrompt || prompt)}.html`;
-    document.body.appendChild(anchor);
-    anchor.click();
-    anchor.remove();
+    const a = document.createElement("a");
+    a.href = url;
+    a.download = `${safeFileName(activePrompt)}.html`;
+    document.body.appendChild(a);
+    a.click();
+    a.remove();
     URL.revokeObjectURL(url);
+    setToast("Game exported as a single HTML file");
   }
 
-  const projectTitle =
-    activeView === "starred"
-      ? "Starred"
-      : activeView === "created"
-        ? "Created by me"
-        : activeView === "shared"
-          ? "Shared with me"
-          : "Projects";
+  function backHome() {
+    setView("home");
+    clearStepTimer();
+  }
+
+  function openCommunity(item) {
+    generate(item.prompt || `a ${item.scene} game called ${item.title}, polished and fun`);
+  }
+
+  const cycle = CYCLE_WORDS[wordIndex];
+
+  if (view === "workspace") {
+    return (
+      <>
+        <Workspace
+          userPrompt={activePrompt}
+          plan={plan}
+          html={html}
+          loading={loading}
+          stepIndex={stepIndex}
+          percent={percent}
+          followup={followup}
+          setFollowup={setFollowup}
+          onFollowup={handleFollowup}
+          onBack={backHome}
+          onRebuild={() => generate(activePrompt)}
+          onDownload={downloadGame}
+          error={error}
+        />
+        {toast && <div className="toast">{toast}</div>}
+      </>
+    );
+  }
 
   return (
-    <div className="app-shell">
-      <Sidebar activeView={activeView} setActiveView={setActiveView} hasGame={!!html} html={html} downloadGame={downloadGame} />
-      <div className="app-main">
-        <MobileTopbar activeView={activeView} setActiveView={setActiveView} />
-        {activeView === "home" && (
-          <HomeView
-            prompt={prompt}
-            setPrompt={setPrompt}
-            generate={generate}
-            planGame={planGame}
-            plan={plan}
-            setPlan={setPlan}
-            loading={loading}
-            planning={planning}
-            error={error}
-            setActiveView={setActiveView}
-            openPreview={openPreview}
-          />
-        )}
-        {["projects", "starred", "created", "shared"].includes(activeView) && (
-          <ProjectsView title={projectTitle} openPreview={openPreview} setActiveView={setActiveView} />
-        )}
-        {(activeView === "resources" || activeView === "search") && (
-          <ResourcesView
-            searchMode={activeView === "search"}
-            query={query}
-            setQuery={setQuery}
-            setPrompt={setPrompt}
-            generate={generate}
-          />
-        )}
-        {activeView === "connectors" && <ConnectorsView />}
-        {activeView === "preview" && (
-          <PreviewView
-            html={html}
-            prompt={prompt}
-            setPrompt={setPrompt}
-            generatedPrompt={generatedPrompt}
-            loading={loading}
-            planning={planning}
-            error={error}
-            generate={generate}
-            planGame={planGame}
-            reset={reset}
-            downloadGame={downloadGame}
-            generationId={generationId}
-            showRating={showRating}
-            setShowRating={setShowRating}
-            rated={rated}
-            setRated={setRated}
-            showThanks={showThanks}
-            setShowThanks={setShowThanks}
-          />
-        )}
+    <div className="lp">
+      <div className="aurora" aria-hidden>
+        <span className="blob blob-1" />
+        <span className="blob blob-2" />
+        <span className="blob blob-3" />
       </div>
+
+      <nav className="nav">
+        <a className="brand" href="#top">
+          <BrandLogo />
+          Gamecraft
+        </a>
+        <div className="nav-links">
+          <a href="#community">Community</a>
+          <a href="#how">How it works</a>
+          <a href="#templates">Templates</a>
+          <a href="#community">Showcase</a>
+        </div>
+        <div className="nav-actions">
+          <button className="btn btn-ghost" type="button">Log in</button>
+          <button className="btn btn-primary" type="button" onClick={() => document.querySelector(".composer textarea")?.focus()}>
+            Get started
+          </button>
+        </div>
+      </nav>
+
+      <header className="hero" id="top">
+        <div className="hero-badge">
+          <span className="dot" />
+          <b>New</b> · games build in seconds, no code
+        </div>
+        <h1>
+          Build something{" "}
+          <span className="cycle">
+            <span className="cycle-word" key={cycle}>{cycle}</span>
+          </span>
+        </h1>
+        <p className="sub">
+          Describe a game and watch it become a real, playable build — then tweak it
+          by chatting and ship it with one click.
+        </p>
+
+        <div className="composer-wrap">
+          <Composer
+            value={prompt}
+            onChange={setPrompt}
+            onSubmit={() => generate()}
+            loading={loading}
+            placeholder="Ask Gamecraft to build a game…  e.g. a neon snake with boss rounds"
+          />
+        </div>
+
+        <div className="chips">
+          {SUGGESTIONS.map((s) => (
+            <button
+              key={s.label}
+              type="button"
+              className="chip"
+              onClick={() => {
+                setPrompt(s.prompt);
+                generate(s.prompt);
+              }}
+            >
+              <Icon name={s.icon} />
+              {s.label}
+            </button>
+          ))}
+        </div>
+
+        {error && <div className="err">{error}</div>}
+      </header>
+
+      <section className="logos">
+        <p>BUILDERS EVERYWHERE ARE SHIPPING GAMES WITH GAMECRAFT</p>
+        <div className="logos-row">
+          <span>Arcadelab</span>
+          <span>Pixeljump</span>
+          <span>Starforge</span>
+          <span>Mythmakers</span>
+          <span>Retrowave</span>
+          <span>Deckwright</span>
+        </div>
+      </section>
+
+      <section className="section" id="community">
+        <div className="section-top">
+          <div>
+            <h2>From the community</h2>
+            <p>Remix a game someone already built, or start from scratch above.</p>
+          </div>
+          <div className="tabs">
+            {TABS.map((t) => (
+              <button
+                key={t}
+                type="button"
+                className={`tab ${tab === t ? "is-active" : ""}`}
+                onClick={() => setTab(t)}
+              >
+                {t}
+              </button>
+            ))}
+          </div>
+        </div>
+        <div className="gallery">
+          {COMMUNITY.map((item, i) => (
+            <CommunityCard key={item.title} item={item} index={i} onOpen={openCommunity} />
+          ))}
+        </div>
+      </section>
+
+      <section className="section" id="how">
+        <div className="section-top">
+          <div>
+            <h2>From idea to playable in three steps</h2>
+            <p>No engines, no setup, no boilerplate — just describe and play.</p>
+          </div>
+        </div>
+        <div className="steps">
+          {[
+            ["Describe it", "Type the game you imagine — a genre, a vibe, a mechanic. Drop in as much or as little detail as you like."],
+            ["Watch it build", "Gamecraft writes a complete, self-contained game and shows it running live in the preview in seconds."],
+            ["Refine & ship", "Chat to tweak anything, then export the finished game as a single HTML file you can host anywhere."],
+          ].map(([title, body], i) => (
+            <article className="step" key={title}>
+              <span className="num">{i + 1}</span>
+              <h3>{title}</h3>
+              <p>{body}</p>
+            </article>
+          ))}
+        </div>
+      </section>
+
+      <section className="cta" id="templates">
+        <h2>Your next game is one sentence away</h2>
+        <p>Start from a blank prompt or remix a community build. It’s playable before you finish your coffee.</p>
+        <button
+          className="btn btn-primary"
+          type="button"
+          style={{ padding: "12px 22px", fontSize: 15 }}
+          onClick={() => {
+            setPrompt(DEFAULT_PROMPT);
+            generate(DEFAULT_PROMPT);
+          }}
+        >
+          <Icon name="bolt" /> Build a game now
+        </button>
+      </section>
+
+      <footer className="footer">
+        <span>© {new Date().getFullYear()} Gamecraft</span>
+        <div className="footer-links">
+          <a href="#community">Community</a>
+          <a href="#how">How it works</a>
+          <a href="#templates">Templates</a>
+          <a href="#top">Back to top</a>
+        </div>
+      </footer>
+
+      {toast && <div className="toast">{toast}</div>}
     </div>
   );
 }

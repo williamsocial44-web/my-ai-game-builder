@@ -8,8 +8,9 @@ const inter = Inter({
 });
 
 export const metadata = {
-  title: "AI Game Builder",
-  description: "Generate, preview, and export playable browser games.",
+  title: "Gamecraft — Build something playable",
+  description:
+    "Describe a game and watch it become a real, playable build in seconds. Chat with AI, preview instantly, ship with one click.",
 };
 
 export default function RootLayout({ children }) {

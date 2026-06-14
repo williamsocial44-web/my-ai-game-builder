@@ -2,11 +2,8 @@ import Anthropic from "@anthropic-ai/sdk";
 import { readFile } from "fs/promises";
 import path from "path";
 import {
-  buildLessonsContext,
   detectGenre,
   detectVisualTheme,
-  extractAndSaveLesson,
-  saveGeneration,
 } from "../../../lib/memory";
 import {
   buildGameBlueprint,
@@ -15,12 +12,12 @@ import {
 
 export const runtime = "nodejs";
 
-const MAX_GENERATE_TOKENS = 4000;
-const MAX_PLAN_TOKENS = 300;
+const MAX_GENERATE_TOKENS = 700;
+const MAX_PLAN_TOKENS = 140;
 const MAX_PROMPT_LENGTH = 300;
-const MAX_REQUESTS_PER_HOUR = 20;
-const GENERATE_MODEL = "claude-sonnet-4-6";
-const PLAN_MODEL = "claude-haiku-4-5-20251001";
+const MAX_REQUESTS_PER_HOUR = 8;
+const GENERATE_MODEL = process.env.GENERATE_MODEL || "claude-sonnet-4-6";
+const PLAN_MODEL = process.env.PLAN_MODEL || "claude-haiku-4-5-20251001";
 const MOCK_MODE = false;
 
 const rateLimitMap = new Map();
@@ -75,8 +72,15 @@ Output raw HTML only. No markdown. No code fences. No explanation. No preamble. 
 TECHNICAL REQUIREMENTS:
 Works in sandboxed iframe with allow-scripts only. No localStorage, sessionStorage, cookies, parent access, or dialogs. Canvas for movement, physics, animation, collision. DOM for card, word, text adventure, board, turn-based. Web Audio API only for sound, procedural short tones, never autoplay.
 
+START BUTTON — CRITICAL, READ THIS:
+The Start/Play button MUST work. This is the single most important thing. Use this exact pattern — no exceptions:
+  let gameStarted = false;
+  function startGame() { gameStarted = true; /* show game, hide title, begin loop */ }
+  document.getElementById('startBtn').addEventListener('click', startGame);
+Place ALL game logic inside functions called AFTER the button is clicked. Never run game loops before startGame() fires. The script tag goes at end of body so the DOM is ready — no DOMContentLoaded needed.
+
 GAME REQUIREMENTS:
-Title screen first with game name and Start button. Controls shown on screen always. Score or progress visible if game type supports it. Win or lose condition. Restart after game over. Fun for at least 2 minutes. Difficulty increases over time for arcade games. On-screen touch buttons for mobile on any game using arrow keys or WASD. Keep output under 450 lines total.
+Title screen with game name and a single clearly-labeled Start/Play button (id="startBtn"). Controls shown on screen at all times during play. Score or progress visible if game type supports it. Win or lose condition. Restart button after game over. Fun for at least 2 minutes. Difficulty increases over time for arcade games. On-screen touch buttons for mobile on any game using arrow keys or WASD. Keep output under 450 lines total.
 
 GAME FEEL:
 Every player action needs immediate feedback. Hit an enemy: flash red. Collect item: particle burst. Score point: counter animates. Game over: overlay with score and restart. Win: celebration particles. Controls must feel instant with zero lag.
@@ -127,9 +131,9 @@ function checkRateLimit(ip) {
 
 function estimateTokenCost(mode) {
   if (mode === "plan") {
-    console.log("PLAN request — ~0.001 credits estimated");
+    console.log("PLAN request — cheap mode, ~0.0005 credits estimated");
   } else {
-    console.log("GENERATE request — ~0.05 credits estimated");
+    console.log("GENERATE request — cheap mode, ~0.01 credits estimated");
   }
 }
 
@@ -213,7 +217,7 @@ export async function POST(request) {
     const genre = detectGenre(prompt);
     const visualTheme = detectVisualTheme(prompt);
     const [lessonsContext, blueprint] = await Promise.all([
-      buildLessonsContext(),
+      Promise.resolve(""),
       buildGameBlueprint(prompt),
     ]);
     const systemPrompt = buildGenerateSystemPrompt(
@@ -236,14 +240,12 @@ export async function POST(request) {
     const isPlan = mode === "plan";
     const anthropic = new Anthropic({ apiKey });
 
-    const stream = anthropic.messages.stream({
+    const message = await anthropic.messages.create({
       model: isPlan ? PLAN_MODEL : GENERATE_MODEL,
       max_tokens: isPlan ? MAX_PLAN_TOKENS : MAX_GENERATE_TOKENS,
       system: isPlan ? PLAN_SYSTEM_PROMPT : systemPrompt,
       messages: [{ role: "user", content: prompt }],
     });
-
-    const message = await stream.finalMessage();
     const text = message.content
       .filter((block) => block.type === "text")
       .map((block) => block.text)
@@ -265,9 +267,7 @@ export async function POST(request) {
         visualTheme,
       };
 
-      saveGeneration(generationPayload).then((generationId) => {
-        extractAndSaveLesson({ ...generationPayload, generationId });
-      });
+      Promise.resolve().catch(() => {});
     }
 
     if (isPlan) {
@@ -276,8 +276,9 @@ export async function POST(request) {
 
     return Response.json({ html: stripFences(text) });
   } catch (error) {
+    console.error("GENERATE ERROR:", error.message, error.status ?? "", error.cause?.message ?? "", error.stack?.split("\n")[1] ?? "");
     return Response.json(
-      { error: "Generation failed. Please try again.", details: error.message },
+      { error: error.message || "Generation failed. Please try again." },
       { status: 500 }
     );
   }
