@@ -1,6 +1,9 @@
 "use client";
 
 import { useEffect, useMemo, useRef, useState } from "react";
+import { useAuth } from "./providers";
+import AuthModal from "./auth-modal";
+import Dashboard from "./dashboard";
 
 /* --------------------------------------------------------------- content --- */
 
@@ -80,6 +83,55 @@ function BrandLogo() {
     <span className="brand-logo">
       <Icon name="controller" />
     </span>
+  );
+}
+
+function UserMenu({ user, onSignOut }) {
+  const [open, setOpen] = useState(false);
+  const meta = user.user_metadata || {};
+  const name = meta.full_name || meta.name || user.email || "Player";
+  const avatar = meta.avatar_url || meta.picture || null;
+  const initial = name.trim()[0]?.toUpperCase() || "P";
+
+  useEffect(() => {
+    if (!open) return;
+    function close(e) {
+      if (!e.target.closest(".user-menu")) setOpen(false);
+    }
+    window.addEventListener("click", close);
+    return () => window.removeEventListener("click", close);
+  }, [open]);
+
+  return (
+    <div className="user-menu">
+      <button
+        type="button"
+        className="user-btn"
+        onClick={(e) => {
+          e.stopPropagation();
+          setOpen((o) => !o);
+        }}
+        aria-label="Account menu"
+      >
+        {avatar ? (
+          // eslint-disable-next-line @next/next/no-img-element
+          <img src={avatar} alt="" referrerPolicy="no-referrer" />
+        ) : (
+          <span className="user-initial">{initial}</span>
+        )}
+      </button>
+      {open && (
+        <div className="user-pop" role="menu">
+          <div className="user-pop-head">
+            <strong>{name}</strong>
+            {user.email && <small>{user.email}</small>}
+          </div>
+          <button type="button" className="user-pop-item" onClick={onSignOut}>
+            <Icon name="arrowLeft" /> Sign out
+          </button>
+        </div>
+      )}
+    </div>
   );
 }
 
@@ -320,6 +372,30 @@ function safeFileName(value) {
   return slug || "gamecraft-game";
 }
 
+const STOP_WORDS = new Set(["a", "an", "the", "with", "and", "of", "for", "to", "game", "that", "where", "in", "on"]);
+
+function deriveTitle(prompt) {
+  const words = (prompt || "")
+    .replace(/[^a-zA-Z0-9 ]+/g, " ")
+    .split(/\s+/)
+    .filter((w) => w && !STOP_WORDS.has(w.toLowerCase()))
+    .slice(0, 3);
+  const title = words.map((w) => w[0].toUpperCase() + w.slice(1)).join(" ");
+  return title || "Untitled Game";
+}
+
+function sceneFromPrompt(prompt) {
+  const p = (prompt || "").toLowerCase();
+  if (/space|ship|alien|meteor|galaxy|orbital|star/.test(p)) return "space";
+  if (/clicker|cookie|idle|incremental|tycoon/.test(p)) return "clicker";
+  if (/word|wordle|letter|spell|crossword/.test(p)) return "word";
+  if (/card|deck|dungeon|roguelike/.test(p)) return "cards";
+  if (/platform|jump|coin|spike/.test(p)) return "platformer";
+  if (/fantasy|magic|quest|dragon|spell|knight/.test(p)) return "fantasy";
+  if (/retro|arcade|scanline|pixel|classic/.test(p)) return "retro";
+  return "neon";
+}
+
 function wrapPreviewHtml(html) {
   if (!html || typeof html !== "string") return html;
   const fallbackScript = `
@@ -363,6 +439,32 @@ export default function Home() {
   const [error, setError] = useState("");
   const [tab, setTab] = useState("Popular");
   const [toast, setToast] = useState("");
+  const [authOpen, setAuthOpen] = useState(false);
+  const [authMode, setAuthMode] = useState("login");
+  const { user, loading: authLoading, signOut } = useAuth();
+  const [projects, setProjects] = useState([]);
+
+  // load saved projects from this browser
+  useEffect(() => {
+    try {
+      const raw = window.localStorage.getItem("gamecraft.projects");
+      if (raw) setProjects(JSON.parse(raw));
+    } catch {
+      /* ignore corrupt storage */
+    }
+  }, []);
+
+  function saveProject(project) {
+    setProjects((prev) => {
+      const next = [project, ...prev].slice(0, 60);
+      try {
+        window.localStorage.setItem("gamecraft.projects", JSON.stringify(next));
+      } catch {
+        /* storage full or unavailable */
+      }
+      return next;
+    });
+  }
 
   const [wordIndex, setWordIndex] = useState(0);
   const [stepIndex, setStepIndex] = useState(0);
@@ -382,6 +484,18 @@ export default function Home() {
     const t = setTimeout(() => setToast(""), 2200);
     return () => clearTimeout(t);
   }, [toast]);
+
+  // surface an OAuth error redirected back from the callback, then clean the URL
+  useEffect(() => {
+    const params = new URLSearchParams(window.location.search);
+    const authError = params.get("auth_error");
+    if (authError) {
+      setToast(`Sign-in failed: ${authError}`);
+      params.delete("auth_error");
+      const qs = params.toString();
+      window.history.replaceState({}, "", window.location.pathname + (qs ? `?${qs}` : ""));
+    }
+  }, []);
 
   function clearStepTimer() {
     if (stepTimer.current) {
@@ -443,6 +557,14 @@ export default function Home() {
       setHtml(data.html);
       setPercent(100);
       setStepIndex(BUILD_STEPS.length);
+      saveProject({
+        id: crypto?.randomUUID?.() || String(Date.now()),
+        title: deriveTitle(requestPrompt),
+        prompt: requestPrompt,
+        html: data.html,
+        scene: sceneFromPrompt(requestPrompt),
+        createdAt: Date.now(),
+      });
     } catch (err) {
       setError(err.message || "Something went wrong.");
     } finally {
@@ -482,6 +604,14 @@ export default function Home() {
     generate(item.prompt || `a ${item.scene} game called ${item.title}, polished and fun`);
   }
 
+  function openProject(project) {
+    setHtml(project.html);
+    setActivePrompt(project.prompt);
+    setPlan("");
+    setError("");
+    setView("workspace");
+  }
+
   const cycle = CYCLE_WORDS[wordIndex];
 
   if (view === "workspace") {
@@ -507,6 +637,27 @@ export default function Home() {
     );
   }
 
+  if (user) {
+    return (
+      <>
+        <Dashboard
+          user={user}
+          projects={projects}
+          onBuild={(p) => generate(p)}
+          onOpenProject={openProject}
+          onSignOut={async () => {
+            await signOut();
+            setView("home");
+            setToast("Signed out");
+          }}
+          onNotify={setToast}
+        />
+        <AuthModal open={authOpen} onClose={() => setAuthOpen(false)} mode={authMode} />
+        {toast && <div className="toast">{toast}</div>}
+      </>
+    );
+  }
+
   return (
     <div className="lp">
       <div className="aurora" aria-hidden>
@@ -527,10 +678,40 @@ export default function Home() {
           <a href="#community">Showcase</a>
         </div>
         <div className="nav-actions">
-          <button className="btn btn-ghost" type="button">Log in</button>
-          <button className="btn btn-primary" type="button" onClick={() => document.querySelector(".composer textarea")?.focus()}>
-            Get started
-          </button>
+          {authLoading ? (
+            <span className="user-skel" aria-hidden />
+          ) : user ? (
+            <UserMenu
+              user={user}
+              onSignOut={async () => {
+                await signOut();
+                setToast("Signed out");
+              }}
+            />
+          ) : (
+            <>
+              <button
+                className="btn btn-ghost"
+                type="button"
+                onClick={() => {
+                  setAuthMode("login");
+                  setAuthOpen(true);
+                }}
+              >
+                Log in
+              </button>
+              <button
+                className="btn btn-primary"
+                type="button"
+                onClick={() => {
+                  setAuthMode("signup");
+                  setAuthOpen(true);
+                }}
+              >
+                Get started
+              </button>
+            </>
+          )}
         </div>
       </nav>
 
@@ -665,6 +846,8 @@ export default function Home() {
           <a href="#top">Back to top</a>
         </div>
       </footer>
+
+      <AuthModal open={authOpen} onClose={() => setAuthOpen(false)} mode={authMode} />
 
       {toast && <div className="toast">{toast}</div>}
     </div>
