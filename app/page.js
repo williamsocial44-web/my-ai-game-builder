@@ -74,6 +74,10 @@ function Icon({ name, className }) {
     check: <path d="m5 12 5 5 9-11" />,
     bolt: <path d="M13 2 4 14h7l-1 8 10-13h-7l1-7Z" />,
     controller: <><path d="M6 11h4m-2-2v4" /><circle cx="15.5" cy="11" r="1" /><circle cx="18" cy="13.5" r="1" /><path d="M7 6h10a4 4 0 0 1 4 4l.8 5.2a2.5 2.5 0 0 1-4.7 1.4L16 15H8l-1.1 1.6a2.5 2.5 0 0 1-4.7-1.4L3 10a4 4 0 0 1 4-4Z" /></>,
+    share: <><circle cx="18" cy="5" r="3" /><circle cx="6" cy="12" r="3" /><circle cx="18" cy="19" r="3" /><path d="m8.6 13.5 6.8 4M15.4 6.5 8.6 10.5" /></>,
+    external: <><path d="M14 5h5v5" /><path d="M19 5 11 13" /><path d="M19 13v6H5V5h6" /></>,
+    code: <path d="m9 8-5 4 5 4m6-8 5 4-5 4" />,
+    copy: <><rect x="9" y="9" width="11" height="11" rx="2" /><path d="M5 15V5a2 2 0 0 1 2-2h8" /></>,
   };
   return <svg {...p}>{shapes[name] || shapes.spark}</svg>;
 }
@@ -252,12 +256,65 @@ function Workspace({
   onBack,
   onRebuild,
   onDownload,
+  onNotify,
   error,
 }) {
   const feedRef = useRef(null);
+  const [shareOpen, setShareOpen] = useState(false);
+
   useEffect(() => {
     feedRef.current?.scrollTo({ top: feedRef.current.scrollHeight, behavior: "smooth" });
   }, [stepIndex, html, plan]);
+
+  useEffect(() => {
+    if (!shareOpen) return;
+    const close = (e) => { if (!e.target.closest(".ws-share")) setShareOpen(false); };
+    window.addEventListener("click", close);
+    return () => window.removeEventListener("click", close);
+  }, [shareOpen]);
+
+  function playStandalone() {
+    if (!html) return;
+    const blob = new Blob([wrapPreviewHtml(html)], { type: "text/html" });
+    const url = URL.createObjectURL(blob);
+    window.open(url, "_blank", "noopener");
+    setTimeout(() => URL.revokeObjectURL(url), 60000);
+  }
+
+  function copyEmbed() {
+    setShareOpen(false);
+    if (!html) return;
+    const doc = wrapPreviewHtml(html).replace(/&/g, "&amp;").replace(/"/g, "&quot;");
+    const code = `<iframe srcdoc="${doc}" width="420" height="640" style="border:0;border-radius:12px;max-width:100%;" sandbox="allow-scripts" loading="lazy" title="Made with Gamecraft"></iframe>`;
+    navigator.clipboard?.writeText(code).then(
+      () => onNotify?.("Embed code copied — paste it on any website"),
+      () => onNotify?.("Copy failed")
+    );
+  }
+
+  function copySource() {
+    setShareOpen(false);
+    if (!html) return;
+    navigator.clipboard?.writeText(html).then(
+      () => onNotify?.("Game code copied to clipboard"),
+      () => onNotify?.("Copy failed")
+    );
+  }
+
+  async function shareDevice() {
+    setShareOpen(false);
+    if (typeof navigator !== "undefined" && navigator.share) {
+      try {
+        await navigator.share({ title: "I built a game on Gamecraft", text: "Play the game I just made on Gamecraft!" });
+      } catch {
+        /* user dismissed the share sheet */
+      }
+    } else {
+      copySource();
+    }
+  }
+
+  const canShareDevice = typeof navigator !== "undefined" && !!navigator.share;
 
   return (
     <div className="ws">
@@ -336,6 +393,46 @@ function Workspace({
             <button type="button" className="tool-btn" onClick={onRebuild} disabled={loading}>
               <Icon name="refresh" /> Rebuild
             </button>
+            <button type="button" className="tool-btn" onClick={playStandalone} disabled={!html}>
+              <Icon name="external" /> Play
+            </button>
+            <div className="ws-share">
+              <button
+                type="button"
+                className="tool-btn"
+                onClick={(e) => { e.stopPropagation(); setShareOpen((o) => !o); }}
+                disabled={!html}
+              >
+                <Icon name="share" /> Share <Icon name="chevron" />
+              </button>
+              {shareOpen && (
+                <div className="ws-share-menu" onClick={(e) => e.stopPropagation()}>
+                  <button type="button" className="ws-share-item" onClick={copyEmbed}>
+                    <Icon name="code" />
+                    <span>
+                      <strong>Copy embed code</strong>
+                      <small>Drop your game into any site or blog</small>
+                    </span>
+                  </button>
+                  <button type="button" className="ws-share-item" onClick={copySource}>
+                    <Icon name="copy" />
+                    <span>
+                      <strong>Copy game code</strong>
+                      <small>The full single-file HTML</small>
+                    </span>
+                  </button>
+                  {canShareDevice && (
+                    <button type="button" className="ws-share-item" onClick={shareDevice}>
+                      <Icon name="share" />
+                      <span>
+                        <strong>Share…</strong>
+                        <small>Use your device share sheet</small>
+                      </span>
+                    </button>
+                  )}
+                </div>
+              )}
+            </div>
             <button type="button" className="tool-btn primary" onClick={onDownload} disabled={!html}>
               <Icon name="download" /> Export
             </button>
@@ -630,6 +727,7 @@ export default function Home() {
           onBack={backHome}
           onRebuild={() => generate(activePrompt)}
           onDownload={downloadGame}
+          onNotify={setToast}
           error={error}
         />
         {toast && <div className="toast">{toast}</div>}

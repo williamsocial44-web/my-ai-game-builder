@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useMemo, useRef, useState } from "react";
+import { useEffect, useId, useMemo, useRef, useState } from "react";
 
 /* ----------------------------------------------------------------- icons --- */
 
@@ -41,24 +41,21 @@ function Icon({ name, className }) {
     palette: <><circle cx="13.5" cy="6.5" r="1" fill="currentColor" stroke="none" /><circle cx="17" cy="10.5" r="1" fill="currentColor" stroke="none" /><circle cx="8.5" cy="7.5" r="1" fill="currentColor" stroke="none" /><circle cx="6.5" cy="12" r="1" fill="currentColor" stroke="none" /><path d="M12 2a10 10 0 0 0 0 20 2.5 2.5 0 0 0 2-4 2.5 2.5 0 0 1 2-4h2a4 4 0 0 0 4-4 10 10 0 0 0-10-8Z" /></>,
     arrowLeft: <path d="M19 12H5m6-7-7 7 7 7" />,
     databases: <><ellipse cx="12" cy="6" rx="8" ry="3" /><path d="M4 6v12c0 1.7 3.6 3 8 3s8-1.3 8-3V6" /><path d="M4 12c0 1.7 3.6 3 8 3s8-1.3 8-3" /></>,
+    close: <path d="M6 6l12 12M18 6 6 18" />,
+    gear: <><circle cx="12" cy="12" r="3.2" /><path d="M19.4 13a1.7 1.7 0 0 0 .3 1.9l.1.1a2 2 0 1 1-2.8 2.8l-.1-.1a1.7 1.7 0 0 0-2.9 1.2V21a2 2 0 1 1-4 0v-.2A1.7 1.7 0 0 0 7 19.4a1.7 1.7 0 0 0-1.9.3l-.1.1a2 2 0 1 1-2.8-2.8l.1-.1A1.7 1.7 0 0 0 2.6 14H2.5a2 2 0 1 1 0-4h.2A1.7 1.7 0 0 0 4.6 7l-.1-.1a2 2 0 1 1 2.8-2.8l.1.1A1.7 1.7 0 0 0 10 4.6h.1A1.7 1.7 0 0 0 11 2.6V2.5a2 2 0 1 1 4 0v.2a1.7 1.7 0 0 0 2.9 1.2l.1-.1a2 2 0 1 1 2.8 2.8l-.1.1a1.7 1.7 0 0 0-.3 1.9v.1a1.7 1.7 0 0 0 1.6 1h.1a2 2 0 1 1 0 4h-.2a1.7 1.7 0 0 0-1.6 1Z" /></>,
+    card: <><rect x="2.5" y="5" width="19" height="14" rx="2.5" /><path d="M2.5 9.5h19M6 15h4" /></>,
+    check: <path d="m5 12 5 5 9-11" />,
+    bell: <><path d="M18 8a6 6 0 0 0-12 0c0 7-3 9-3 9h18s-3-2-3-9" /><path d="M13.7 21a2 2 0 0 1-3.4 0" /></>,
+    share: <><circle cx="18" cy="5" r="3" /><circle cx="6" cy="12" r="3" /><circle cx="18" cy="19" r="3" /><path d="m8.6 13.5 6.8 4M15.4 6.5 8.6 10.5" /></>,
+    external: <><path d="M14 5h5v5" /><path d="M19 5 11 13" /><path d="M19 13v6H5V5h6" /></>,
+    code: <path d="m9 8-5 4 5 4m6-8 5 4-5 4" />,
+    copy: <><rect x="9" y="9" width="11" height="11" rx="2" /><path d="M5 15V5a2 2 0 0 1 2-2h8" /></>,
+    download: <><path d="M12 3v12m0 0 4-4m-4 4-4-4" /><path d="M4 17v2a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2v-2" /></>,
   };
   return <svg {...p}>{s[name] || s.grid}</svg>;
 }
 
 /* ------------------------------------------------------------- templates --- */
-
-const CATEGORIES = ["All", "Arcade", "Action", "Puzzle", "Idle", "Cards", "Platformer", "Strategy", "Retro"];
-
-const SCENE_EMOJI = {
-  neon: "🐍",
-  space: "🚀",
-  clicker: "🍪",
-  word: "🔤",
-  cards: "🃏",
-  platformer: "🏃",
-  fantasy: "⚔️",
-  retro: "👾",
-};
 
 const TEMPLATES = [
   { title: "Neon Serpent", cat: "Arcade", emoji: "🐍", desc: "Glowing snake with power-ups and boss rounds", scene: "neon", prompt: "a neon snake game with glowing trails, power-ups, and boss rounds" },
@@ -108,14 +105,257 @@ function Avatar({ user, size = 28 }) {
   );
 }
 
-function Thumb({ scene, title, emoji }) {
-  const glyph = emoji || SCENE_EMOJI[scene] || "🎮";
+/* ------------------------------------------------------- scene poster art --- */
+/* Each genre gets its own vivid, full-bleed cover so the gallery reads like a
+   shelf of real game posters instead of a grid of emoji. */
+
+const stars = (pts) =>
+  pts.map(([x, y, r], i) => <circle key={i} cx={x} cy={y} r={r} fill="#fff" opacity="0.9" />);
+
+// Per-genre palette + the gameplay subject ("motif"). The motif draws inside the
+// full 0..320 x 0..200 frame so the same art can be dropped into any treatment.
+const SCENES = {
+  neon: {
+    stops: ["#16e6b8", "#7b4dff", "#ff4d8f"],
+    accent: "#39ff8b",
+    motif: ({ shadow }) => (
+      <>
+        <g stroke="#ffffff" strokeOpacity="0.1" strokeWidth="1">
+          {[1, 2, 3, 4].map((i) => <line key={`v${i}`} x1={i * 64} y1="0" x2={i * 64} y2="200" />)}
+          {[1, 2].map((i) => <line key={`h${i}`} x1="0" y1={i * 66} x2="320" y2={i * 66} />)}
+        </g>
+        <g fill="#eafff9" filter={shadow}>
+          {[[68, 104], [100, 104], [132, 104], [132, 134], [164, 134], [164, 104]].map(([x, y], i) => (
+            <rect key={i} x={x} y={y} width="26" height="26" rx="7" />
+          ))}
+        </g>
+        <circle cx="232" cy="84" r="13" fill="#ff2d6f" stroke="#fff" strokeWidth="2" filter={shadow} />
+      </>
+    ),
+  },
+  space: {
+    stops: ["#2438ff", "#7a36e0", "#190a4d"],
+    accent: "#9be7ff",
+    motif: ({ shadow, fill, id }) => (
+      <>
+        <radialGradient id={id("planet")} cx="0.35" cy="0.3" r="0.85">
+          <stop offset="0" stopColor="#ffd76b" />
+          <stop offset="1" stopColor="#ff5e8a" />
+        </radialGradient>
+        {stars([[40, 36, 2.2], [92, 22, 1.4], [148, 46, 1.5], [206, 28, 2.1], [284, 60, 1.5], [300, 30, 1.3], [60, 150, 1.6], [120, 96, 1.3]])}
+        <circle cx="232" cy="120" r="50" fill={fill("planet")} filter={shadow} />
+        <ellipse cx="232" cy="120" rx="78" ry="19" fill="none" stroke="#ffe6a6" strokeOpacity="0.8" strokeWidth="5" transform="rotate(-18 232 120)" />
+        <path d="M58 152 l30 -14 -10 18 20 7 -34 9 z" fill="#9be7ff" filter={shadow} />
+      </>
+    ),
+  },
+  clicker: {
+    stops: ["#ffc861", "#ff7a3d", "#7a2f12"],
+    accent: "#ffe06b",
+    motif: ({ shadow, fill, id }) => (
+      <>
+        <radialGradient id={id("cookie")} cx="0.4" cy="0.35" r="0.75">
+          <stop offset="0" stopColor="#f6cd83" />
+          <stop offset="1" stopColor="#c98a3c" />
+        </radialGradient>
+        <circle cx="158" cy="108" r="60" fill={fill("cookie")} stroke="#a96f2c" strokeWidth="3" filter={shadow} />
+        {[[138, 84], [186, 98], [148, 132], [180, 132], [126, 116], [168, 82]].map(([x, y], i) => (
+          <circle key={i} cx={x} cy={y} r={7 - (i % 2) * 2} fill="#5a3210" />
+        ))}
+        <circle cx="252" cy="72" r="13" fill="#ffd76b" stroke="#c98a3c" strokeWidth="3" filter={shadow} />
+        <circle cx="72" cy="150" r="11" fill="#ffd76b" stroke="#c98a3c" strokeWidth="3" filter={shadow} />
+        <path d="M282 38 l4 11 11 4 -11 4 -4 11 -4 -11 -11 -4 11 -4 z" fill="#fff" opacity="0.85" />
+      </>
+    ),
+  },
+  word: {
+    stops: ["#19e3a0", "#1aa6c4", "#143a6b"],
+    accent: "#ffffff",
+    motif: ({ shadow }) => (
+      <>
+        <g filter={shadow}>
+          {["G", "A", "M", "E"].map((ch, i) => (
+            <g key={ch} transform={`translate(${44 + i * 60} 56)`}>
+              <rect width="48" height="54" rx="9" fill="#ffffff" opacity="0.96" />
+              <text x="24" y="38" textAnchor="middle" fontFamily="Inter, system-ui, sans-serif" fontSize="32" fontWeight="800" fill="#14315c">{ch}</text>
+            </g>
+          ))}
+        </g>
+        <g fill="#ffffff" opacity="0.4">
+          {[0, 1, 2, 3].map((i) => <rect key={i} x={44 + i * 60} y="124" width="48" height="42" rx="9" />)}
+        </g>
+      </>
+    ),
+  },
+  cards: {
+    stops: ["#b362ff", "#6a2bd6", "#240a52"],
+    accent: "#ffd54a",
+    motif: ({ shadow }) => (
+      <g filter={shadow}>
+        {[[-16, "♠", "#1a1330"], [0, "♥", "#ff3d6e"], [16, "♦", "#ff8a3d"]].map(([rot, suit, col], i) => (
+          <g key={i} transform={`translate(${116 + i * 28} 50) rotate(${rot} 40 56)`}>
+            <rect width="80" height="112" rx="12" fill="#fff" stroke="#e3d6ff" strokeWidth="2" />
+            <text x="40" y="74" textAnchor="middle" fontSize="46" fill={col}>{suit}</text>
+          </g>
+        ))}
+      </g>
+    ),
+  },
+  platformer: {
+    stops: ["#54b8ff", "#3a7bd5", "#10994f"],
+    accent: "#ffd233",
+    motif: ({ shadow }) => (
+      <>
+        <circle cx="266" cy="44" r="26" fill="#ffe06b" filter={shadow} />
+        <path d="M0 178 q60 -28 120 0 t120 0 t120 0 V200 H0 Z" fill="#0f7a3c" opacity="0.45" />
+        <g filter={shadow}>
+          <rect x="34" y="140" width="96" height="20" rx="6" fill="#1f7d3e" />
+          <rect x="178" y="108" width="92" height="20" rx="6" fill="#1f7d3e" />
+        </g>
+        <rect x="62" y="108" width="28" height="32" rx="6" fill="#ff5c8a" filter={shadow} />
+        <circle cx="214" cy="88" r="11" fill="#ffd233" stroke="#b9860a" strokeWidth="3" filter={shadow} />
+      </>
+    ),
+  },
+  fantasy: {
+    stops: ["#ff5c8a", "#7a36c2", "#1c0a40"],
+    accent: "#ffd54a",
+    motif: ({ shadow }) => (
+      <>
+        {stars([[44, 40, 1.8], [120, 28, 1.4], [276, 44, 2], [300, 90, 1.4], [30, 96, 1.4]])}
+        <circle cx="262" cy="48" r="16" fill="#ffe6a6" opacity="0.9" />
+        <g fill="#241048" filter={shadow}>
+          <rect x="88" y="118" width="144" height="62" />
+          <rect x="100" y="92" width="22" height="28" />
+          <rect x="149" y="82" width="22" height="38" />
+          <rect x="198" y="92" width="22" height="28" />
+        </g>
+        <g fill="#ffd54a" filter={shadow}>
+          <path d="M132 76 l12 -22 12 18 12 -18 12 22 z" />
+          <rect x="132" y="76" width="48" height="9" />
+        </g>
+      </>
+    ),
+  },
+  retro: {
+    stops: ["#ff2db5", "#7b2dff", "#0a0a2e"],
+    accent: "#39ff8b",
+    motif: ({ shadow }) => (
+      <>
+        <g fill="#39ff8b" filter={shadow}>
+          {[[140, 66], [164, 66], [128, 78], [152, 78], [176, 78], [116, 90], [140, 90], [164, 90], [188, 90], [128, 102], [176, 102], [116, 114], [188, 114]].map(([x, y], i) => (
+            <rect key={i} x={x} y={y} width="14" height="12" />
+          ))}
+        </g>
+        <g fill="#ff3d9a">
+          {[[58, 142], [78, 142], [58, 154], [98, 154]].map(([x, y], i) => <rect key={i} x={x} y={y} width="12" height="10" />)}
+        </g>
+        <g stroke="#ffffff" strokeOpacity="0.08" strokeWidth="3">
+          {[0, 1, 2, 3, 4, 5, 6].map((i) => <line key={i} x1="0" y1={18 + i * 28} x2="320" y2={18 + i * 28} />)}
+        </g>
+      </>
+    ),
+  },
+};
+
+// cover: "art" (cinematic key art) · "shot" (in-game screenshot w/ HUD) · "device"
+// (game shown on a screen). Mixing them makes the gallery feel like real covers.
+function ScenePoster({ scene, cover = "art" }) {
+  const raw = useId();
+  const uid = raw.replace(/:/g, "");
+  const id = (n) => `${uid}-${n}`;
+  const fill = (n) => `url(#${id(n)})`;
+  const cfg = SCENES[scene] || SCENES.neon;
+  const shadow = `url(#${id("shadow")})`;
+  const motif = cfg.motif({ shadow, accent: cfg.accent, fill, id });
+
+  const svgProps = {
+    viewBox: "0 0 320 200",
+    preserveAspectRatio: "xMidYMid slice",
+    xmlns: "http://www.w3.org/2000/svg",
+    className: "poster",
+    "aria-hidden": true,
+  };
+
+  const defs = (
+    <defs>
+      <linearGradient id={id("bg")} x1="0" y1="0" x2="1" y2="1">
+        {cfg.stops.map((c, i) => (
+          <stop key={i} offset={i / (cfg.stops.length - 1)} stopColor={c} />
+        ))}
+      </linearGradient>
+      <radialGradient id={id("light")} cx="0.5" cy="0.08" r="0.95">
+        <stop offset="0" stopColor="#ffffff" stopOpacity="0.32" />
+        <stop offset="0.55" stopColor="#ffffff" stopOpacity="0" />
+      </radialGradient>
+      <radialGradient id={id("vig")} cx="0.5" cy="0.52" r="0.72">
+        <stop offset="0.5" stopColor="#000000" stopOpacity="0" />
+        <stop offset="1" stopColor="#000000" stopOpacity="0.5" />
+      </radialGradient>
+      <filter id={id("shadow")} x="-20%" y="-20%" width="140%" height="140%">
+        <feDropShadow dx="0" dy="3" stdDeviation="3.2" floodColor="#000000" floodOpacity="0.38" />
+      </filter>
+    </defs>
+  );
+
+  const sceneArt = (
+    <>
+      <rect width="320" height="200" fill={fill("bg")} />
+      <rect width="320" height="200" fill={fill("light")} />
+      {motif}
+      <rect width="320" height="200" fill={fill("vig")} />
+    </>
+  );
+
+  if (cover === "device") {
+    return (
+      <svg {...svgProps}>
+        {defs}
+        <clipPath id={id("screen")}>
+          <rect x="30" y="26" width="260" height="148" rx="9" />
+        </clipPath>
+        <rect width="320" height="200" fill={fill("bg")} />
+        <rect width="320" height="200" fill="#05060a" opacity="0.55" />
+        <rect x="18" y="14" width="284" height="172" rx="18" fill="#0c0c12" stroke="#2b2b35" strokeWidth="1.5" />
+        <g clipPath={`url(#${id("screen")})`}>
+          <g transform="translate(30 26) scale(0.8125 0.74)">{sceneArt}</g>
+          <polygon points="30,26 148,26 70,174 30,174" fill="#ffffff" opacity="0.06" />
+        </g>
+      </svg>
+    );
+  }
+
+  if (cover === "shot") {
+    return (
+      <svg {...svgProps}>
+        {defs}
+        {sceneArt}
+        <g>
+          <rect x="12" y="12" width="92" height="24" rx="12" fill="#05060a" opacity="0.42" />
+          <circle cx="26" cy="24" r="6" fill={cfg.accent} />
+          <text x="40" y="29" fontFamily="Inter, system-ui, sans-serif" fontSize="13" fontWeight="800" fill="#fff">1240</text>
+          <g fill={cfg.accent}>
+            {[0, 1, 2].map((i) => <circle key={i} cx={270 + i * 16} cy="24" r="5" />)}
+          </g>
+          <rect x="12" y="178" width="296" height="8" rx="4" fill="#05060a" opacity="0.4" />
+          <rect x="12" y="178" width="188" height="8" rx="4" fill={cfg.accent} opacity="0.92" />
+        </g>
+      </svg>
+    );
+  }
+
+  return (
+    <svg {...svgProps}>
+      {defs}
+      {sceneArt}
+    </svg>
+  );
+}
+
+function Thumb({ scene, cover }) {
   return (
     <div className="t-thumb">
-      <div className={`scene scene-${scene}`}>
-        <span className="scene-emoji" aria-hidden>{glyph}</span>
-        <span className="scene-title">{title}</span>
-      </div>
+      <ScenePoster scene={scene} cover={cover} />
     </div>
   );
 }
@@ -124,9 +364,13 @@ function Thumb({ scene, title, emoji }) {
 
 const NAV = [
   { id: "home", label: "Home", icon: "home" },
-  { id: "search", label: "Search", icon: "search", kbd: "Ctrl K" },
   { id: "resources", label: "Resources", icon: "compass" },
-  { id: "connectors", label: "Connectors", icon: "nodes" },
+  { id: "connectors", label: "Share & export", icon: "share" },
+];
+
+const BOTTOM_NAV = [
+  { id: "settings", label: "Settings", icon: "gear" },
+  { id: "plans", label: "Plans & credits", icon: "card" },
 ];
 
 const PROJECT_NAV = [
@@ -184,7 +428,6 @@ function Sidebar({ section, setSection, user, recents, onOpenProject, onSignOut,
           >
             <Icon name={item.icon} />
             <span>{item.label}</span>
-            {item.kbd && <kbd>{item.kbd}</kbd>}
           </button>
         ))}
       </nav>
@@ -219,6 +462,20 @@ function Sidebar({ section, setSection, user, recents, onOpenProject, onSignOut,
 
       <div className="side-spacer" />
 
+      <nav className="side-nav">
+        {BOTTOM_NAV.map((item) => (
+          <button
+            key={item.id}
+            type="button"
+            className={`side-link ${section === item.id ? "is-active" : ""}`}
+            onClick={() => setSection(item.id)}
+          >
+            <Icon name={item.icon} />
+            <span>{item.label}</span>
+          </button>
+        ))}
+      </nav>
+
       <button
         type="button"
         className="side-card"
@@ -236,7 +493,7 @@ function Sidebar({ section, setSection, user, recents, onOpenProject, onSignOut,
         <Icon name="gift" />
       </button>
 
-      <button type="button" className="side-card side-card-pro" onClick={() => onNotify("Pro plans are coming soon")}>
+      <button type="button" className="side-card side-card-pro" onClick={() => setSection("plans")}>
         <span>
           <strong>Go Pro</strong>
           <small>More builds, faster generations</small>
@@ -446,7 +703,7 @@ function HomeView({ user, projects, onBuild, onOpenProject, setSection, onNotify
                 className="card"
                 onClick={() => (item.isTemplate ? onBuild(item.prompt) : onOpenProject(item))}
               >
-                <Thumb scene={item.scene} title={item.title} emoji={item.emoji} />
+                <Thumb scene={item.scene} />
                 <div className="card-body">
                   <Avatar user={user} size={28} />
                   <span className="meta">
@@ -534,7 +791,7 @@ function ProjectsView({ title, user, projects, onOpenProject, setSection }) {
         <div className="card-grid">
           {filtered.map((p) => (
             <button key={p.id} type="button" className="card" onClick={() => onOpenProject(p)}>
-              <Thumb scene={p.scene} title={p.title} />
+              <Thumb scene={p.scene} />
               <div className="card-body">
                 <Avatar user={user} size={28} />
                 <span className="meta">
@@ -565,41 +822,23 @@ function ProjectsView({ title, user, projects, onOpenProject, setSection }) {
 
 /* -------------------------------------------------------- resources view --- */
 
-function ResourcesView({ onBuild }) {
-  const [cat, setCat] = useState("All");
-  const list = cat === "All" ? TEMPLATES : TEMPLATES.filter((t) => t.cat === cat);
+const RES_COVERS = ["shot", "art", "device"];
 
+function ResourcesView({ onBuild }) {
   return (
     <div className="page res-page">
-      <div className="page-head">
+      <div className="res-head">
         <h1>Game gallery</h1>
-      </div>
-      <p className="page-lead">Pick a starting point — {TEMPLATES.length} ready-made games across every genre. Click one to build it.</p>
-
-      <div className="cat-tabs">
-        {CATEGORIES.map((c) => (
-          <button
-            key={c}
-            type="button"
-            className={`cat-tab ${cat === c ? "is-active" : ""}`}
-            onClick={() => setCat(c)}
-          >
-            {c}
-            {c !== "All" && <span className="cat-count">{TEMPLATES.filter((t) => t.cat === c).length}</span>}
-          </button>
-        ))}
+        <p>Start from a template to build your next game — {TEMPLATES.length} ready-made starters across every genre. Click one to build it.</p>
       </div>
 
       <div className="card-grid res-grid">
-        {list.map((t) => (
-          <button key={t.title} type="button" className="card" onClick={() => onBuild(t.prompt)}>
-            <Thumb scene={t.scene} title={t.title} emoji={t.emoji} />
-            <div className="card-body card-body-tpl">
-              <span className="meta">
-                <strong>{t.title}</strong>
-                <small>{t.desc}</small>
-              </span>
-              <span className="card-cat">{t.cat}</span>
+        {TEMPLATES.map((t, i) => (
+          <button key={t.title} type="button" className="card res-card" onClick={() => onBuild(t.prompt)}>
+            <Thumb scene={t.scene} cover={RES_COVERS[i % RES_COVERS.length]} />
+            <div className="res-card-body">
+              <strong>{t.title}</strong>
+              <small>{t.desc}</small>
             </div>
           </button>
         ))}
@@ -608,96 +847,407 @@ function ResourcesView({ onBuild }) {
   );
 }
 
-/* ------------------------------------------------------- connectors view --- */
+/* --------------------------------------------------- share & export view --- */
 
-function ConnectorsView({ onBuild, onNotify }) {
-  const cards = [
-    { title: "Neon arcade kit", desc: "Glow, particles, and punchy HUD feedback baked in.", prompt: "a neon arcade game with glowing HUD, particle bursts, score streaks, and three power-ups" },
-    { title: "Cozy starter", desc: "Warm palette, soft animation, relaxed pacing.", prompt: "a cozy casual game with soft colors, gentle animations, and a relaxing loop" },
-    { title: "Retro cabinet", desc: "Scanlines, chunky pixels, classic high-score energy.", prompt: "a retro arcade game with scanlines, pixel art, and an old-school high-score table" },
-    { title: "Export target", desc: "Clean start/restart flow ready for one-file export.", prompt: "a polished HTML game with a clear start button, restart flow, and export-ready layout" },
-  ];
+const SHARE_FEATURES = [
+  { icon: "code", title: "Embed anywhere", desc: "Copy an <iframe> snippet and drop your game into any website, blog, or Notion page — no hosting required." },
+  { icon: "external", title: "Play standalone", desc: "Open any game full-screen in its own tab — perfect for sharing your screen or playing distraction-free." },
+  { icon: "download", title: "Download HTML", desc: "Export the whole game as one self-contained file you can host anywhere or keep forever." },
+  { icon: "copy", title: "Copy the code", desc: "Grab the full single-file source to tweak by hand or drop into your own project." },
+];
+
+const SHARE_ROADMAP = ["Shareable game links", "Global leaderboards", "Discord webhook", "Tip jar (Stripe)"];
+
+function ConnectorsView({ setSection }) {
   return (
     <div className="page">
       <div className="page-head">
-        <h1>Connectors</h1>
+        <h1>Share &amp; export</h1>
       </div>
-      <p className="page-lead">Drop a ready-made direction into the builder.</p>
+      <p className="page-lead">
+        Every game you build is a self-contained file you fully own. Open one in the builder and use the
+        <strong> Share</strong> menu to embed it, play it standalone, or export it — all free, no account on the other end.
+      </p>
+
       <div className="conn-grid">
-        {cards.map((c) => (
-          <button key={c.title} type="button" className="conn-card" onClick={() => onBuild(c.prompt)}>
-            <Icon name="nodes" />
-            <h3>{c.title}</h3>
-            <p>{c.desc}</p>
-          </button>
+        {SHARE_FEATURES.map((f) => (
+          <div key={f.title} className="conn-card conn-card-static">
+            <Icon name={f.icon} />
+            <h3>{f.title}</h3>
+            <p>{f.desc}</p>
+          </div>
+        ))}
+      </div>
+
+      <div className="share-cta">
+        <span>
+          <strong>Ready to share something?</strong>
+          <small>Open a game from your projects, then hit Share in the top bar.</small>
+        </span>
+        <button type="button" className="btn btn-primary" onClick={() => setSection("projects")}>
+          <Icon name="grid" /> Open a game
+        </button>
+      </div>
+
+      <h2 className="proj-sub share-roadmap-label">On the roadmap</h2>
+      <div className="share-roadmap">
+        {SHARE_ROADMAP.map((r) => (
+          <span key={r} className="roadmap-chip">{r}</span>
         ))}
       </div>
     </div>
   );
 }
 
-/* ----------------------------------------------------------- search view --- */
+/* --------------------------------------------------------- settings view --- */
 
-function SearchView({ projects, onOpenProject, onBuild, user }) {
-  const [query, setQuery] = useState("");
-  const q = query.trim().toLowerCase();
-  const matchedProjects = projects.filter((p) => q && `${p.title} ${p.prompt}`.toLowerCase().includes(q));
-  const matchedTemplates = TEMPLATES.filter((t) => q && `${t.title} ${t.desc} ${t.prompt}`.toLowerCase().includes(q));
+function Toggle({ on, onChange }) {
+  return (
+    <button
+      type="button"
+      role="switch"
+      aria-checked={on}
+      className={`switch ${on ? "is-on" : ""}`}
+      onClick={() => onChange(!on)}
+    >
+      <span className="switch-dot" />
+    </button>
+  );
+}
+
+function SettingsView({ user, onNotify }) {
+  const meta = user?.user_metadata || {};
+  const [name, setName] = useState(meta.full_name || meta.name || displayName(user));
+  const [prefs, setPrefs] = useState({ summaries: true, publicProfile: false, sounds: true });
+  const togglePref = (key) => setPrefs((p) => ({ ...p, [key]: !p[key] }));
 
   return (
-    <div className="page">
+    <div className="page set-page">
       <div className="page-head">
-        <h1>Search</h1>
+        <h1>Settings</h1>
       </div>
-      <label className="proj-search search-big">
-        <Icon name="search" />
-        <input autoFocus value={query} onChange={(e) => setQuery(e.target.value)} placeholder="Search your games and templates…" />
-      </label>
+      <p className="page-lead">Manage your workspace. More options are on the way — this is just the start.</p>
 
-      {!q ? (
-        <p className="page-lead">Type to search across your projects and the template gallery.</p>
-      ) : (
-        <>
-          {matchedProjects.length > 0 && (
-            <>
-              <h2 className="proj-sub">Your games</h2>
-              <div className="card-grid">
-                {matchedProjects.map((p) => (
-                  <button key={p.id} type="button" className="card" onClick={() => onOpenProject(p)}>
-                    <Thumb scene={p.scene} title={p.title} />
-                    <div className="card-body">
-                      <Avatar user={user} size={28} />
-                      <span className="meta">
-                        <strong>{p.title}</strong>
-                        <small>{relativeTime(p.createdAt)}</small>
-                      </span>
-                    </div>
-                  </button>
-                ))}
-              </div>
-            </>
-          )}
-          <h2 className="proj-sub">Templates</h2>
-          {matchedTemplates.length === 0 ? (
-            <p className="page-lead">No templates match “{query}”.</p>
-          ) : (
-            <div className="card-grid res-grid">
-              {matchedTemplates.map((t) => (
-                <button key={t.title} type="button" className="card" onClick={() => onBuild(t.prompt)}>
-                  <Thumb scene={t.scene} title={t.title} emoji={t.emoji} />
-                  <div className="card-body card-body-tpl">
-                    <span className="meta">
-                      <strong>{t.title}</strong>
-                      <small>{t.desc}</small>
-                    </span>
-                    <span className="card-cat">{t.cat}</span>
-                  </div>
-                </button>
-              ))}
+      <section className="set-card">
+        <div className="set-card-head">
+          <h2>Account</h2>
+          <p>Your profile across Gamecraft.</p>
+        </div>
+        <div className="set-row">
+          <label htmlFor="set-name">Display name</label>
+          <input id="set-name" className="set-input" value={name} onChange={(e) => setName(e.target.value)} />
+        </div>
+        <div className="set-row">
+          <label htmlFor="set-email">Email</label>
+          <input id="set-email" className="set-input" value={user?.email || ""} readOnly />
+        </div>
+        <div className="set-actions">
+          <button type="button" className="btn btn-primary" onClick={() => onNotify("Profile saved")}>Save changes</button>
+        </div>
+      </section>
+
+      <section className="set-card">
+        <div className="set-card-head">
+          <h2>Preferences</h2>
+          <p>Tune how Gamecraft behaves. Placeholders for now.</p>
+        </div>
+        {[
+          { key: "summaries", label: "Email me build summaries", desc: "A recap whenever a game finishes generating." },
+          { key: "publicProfile", label: "Public profile", desc: "Let others discover the games you publish." },
+          { key: "sounds", label: "Interface sounds", desc: "Small clicks and chimes around the app." },
+        ].map((row) => (
+          <div className="set-toggle-row" key={row.key}>
+            <span>
+              <strong>{row.label}</strong>
+              <small>{row.desc}</small>
+            </span>
+            <Toggle on={prefs[row.key]} onChange={() => togglePref(row.key)} />
+          </div>
+        ))}
+      </section>
+
+      <section className="set-card set-danger">
+        <div className="set-card-head">
+          <h2>Danger zone</h2>
+          <p>Permanent actions. Wired up later.</p>
+        </div>
+        <div className="set-actions">
+          <button type="button" className="btn btn-soft" onClick={() => onNotify("Account deletion isn’t available yet")}>Delete account</button>
+        </div>
+      </section>
+    </div>
+  );
+}
+
+/* ------------------------------------------------------------ plans view --- */
+
+const PLANS = [
+  {
+    name: "Free",
+    price: "$0",
+    cadence: "/ month",
+    tagline: "For trying things out.",
+    features: ["25 build credits / month", "Single-file HTML export", "Community gallery access"],
+    current: true,
+  },
+  {
+    name: "Pro",
+    price: "$19",
+    cadence: "/ month",
+    tagline: "For builders shipping often.",
+    features: ["1,000 build credits / month", "Faster generations", "Private projects", "Priority support"],
+    featured: true,
+  },
+  {
+    name: "Studio",
+    price: "$49",
+    cadence: "/ month",
+    tagline: "For teams and power users.",
+    features: ["Unlimited builds", "Team workspaces", "Custom connectors", "Early access features"],
+  },
+];
+
+function PlansView({ onNotify }) {
+  const used = 13;
+  const total = 25;
+  const pct = Math.round((used / total) * 100);
+
+  return (
+    <div className="page plans-page">
+      <div className="page-head">
+        <h1>Plans &amp; credits</h1>
+      </div>
+      <p className="page-lead">You’re on the Free plan. Upgrades aren’t live yet — these are placeholders so you can see the shape of it.</p>
+
+      <section className="credits-card">
+        <div className="credits-top">
+          <span>
+            <strong>{total - used} build credits left</strong>
+            <small>{used} of {total} used this month · resets in 16 days</small>
+          </span>
+          <button type="button" className="btn btn-primary" onClick={() => onNotify("Buying credits is coming soon")}>
+            <Icon name="bolt" /> Get more credits
+          </button>
+        </div>
+        <div className="credits-bar">
+          <i style={{ width: `${pct}%` }} />
+        </div>
+      </section>
+
+      <div className="plan-grid">
+        {PLANS.map((p) => (
+          <div key={p.name} className={`plan-card ${p.featured ? "is-featured" : ""}`}>
+            {p.featured && <span className="plan-badge">Most popular</span>}
+            <h3>{p.name}</h3>
+            <p className="plan-tag">{p.tagline}</p>
+            <div className="plan-price">
+              <strong>{p.price}</strong>
+              <span>{p.cadence}</span>
             </div>
-          )}
-        </>
-      )}
+            <ul className="plan-features">
+              {p.features.map((f) => (
+                <li key={f}><Icon name="check" /> {f}</li>
+              ))}
+            </ul>
+            <button
+              type="button"
+              className={`btn ${p.featured ? "btn-primary" : "btn-soft"} plan-cta`}
+              disabled={p.current}
+              onClick={() => onNotify(`${p.name} plan is coming soon`)}
+            >
+              {p.current ? "Current plan" : `Upgrade to ${p.name}`}
+            </button>
+          </div>
+        ))}
+      </div>
+    </div>
+  );
+}
+
+/* -------------------------------------------------------- command palette --- */
+
+function ProjectPreview({ project, user }) {
+  const meta = user?.user_metadata || {};
+  const author = meta.full_name || meta.name || displayName(user);
+  const when = relativeTime(project.createdAt).replace(/^Edited /, "");
+  return (
+    <div className="cmdk-pv">
+      <div className="cmdk-pv-thumb">
+        <ScenePoster scene={project.scene} />
+      </div>
+      <h3>{project.title}</h3>
+      <dl className="cmdk-pv-grid">
+        <div><dt>Created by</dt><dd>{author}</dd></div>
+        <div><dt>Status</dt><dd>Private</dd></div>
+        <div><dt>Created</dt><dd>{when}</dd></div>
+        <div><dt>Last edited</dt><dd>{when}</dd></div>
+      </dl>
+      {project.prompt && <p className="cmdk-pv-prompt">{project.prompt}</p>}
+    </div>
+  );
+}
+
+function CommandPalette({ open, onClose, recents, onOpenProject, onNavigate, onNotify, user }) {
+  const [query, setQuery] = useState("");
+  const [active, setActive] = useState(0);
+  const inputRef = useRef(null);
+
+  useEffect(() => {
+    if (!open) return;
+    setQuery("");
+    setActive(0);
+    const t = setTimeout(() => inputRef.current?.focus(), 20);
+    return () => clearTimeout(t);
+  }, [open]);
+
+  const run = (fn) => {
+    onClose();
+    fn?.();
+  };
+
+  const projItems = useMemo(
+    () =>
+      recents.slice(0, 8).map((p) => ({
+        id: `p-${p.id}`,
+        group: "Recent projects",
+        label: p.title,
+        icon: "play",
+        project: p,
+        run: () => onOpenProject(p),
+      })),
+    [recents, onOpenProject]
+  );
+
+  const navItems = useMemo(
+    () => [
+      { id: "home", group: "Navigate to", label: "Dashboard", icon: "home", desc: "Your home and build prompt", run: () => onNavigate("home") },
+      { id: "new", group: "Navigate to", label: "Create new game", icon: "plus", desc: "Start a fresh build from a blank prompt", run: () => onNavigate("home") },
+      { id: "projects", group: "Navigate to", label: "All projects", icon: "grid", desc: "Everything you've built", run: () => onNavigate("projects") },
+      { id: "starred", group: "Navigate to", label: "Starred", icon: "star", desc: "Games you've starred", run: () => onNavigate("starred") },
+      { id: "resources", group: "Navigate to", label: "Templates · Game gallery", icon: "compass", desc: "Ready-made games to remix", run: () => onNavigate("resources") },
+      { id: "connectors", group: "Navigate to", label: "Share & export", icon: "share", desc: "Embed, publish, and export your games", run: () => onNavigate("connectors") },
+      { id: "settings", group: "Settings", label: "Settings", icon: "gear", desc: "Workspace preferences", run: () => onNavigate("settings") },
+      { id: "plans", group: "Settings", label: "Plans & credits", icon: "card", desc: "Upgrade for more builds and faster generations", run: () => onNavigate("plans") },
+    ],
+    [onNavigate]
+  );
+
+  const q = query.trim().toLowerCase();
+  const items = useMemo(() => {
+    const all = [...projItems, ...navItems];
+    return all.filter((it) => !q || `${it.label} ${it.desc || ""} ${it.project?.prompt || ""}`.toLowerCase().includes(q));
+  }, [projItems, navItems, q]);
+
+  useEffect(() => {
+    setActive((a) => Math.min(a, Math.max(0, items.length - 1)));
+  }, [items.length]);
+
+  useEffect(() => {
+    if (!open) return;
+    const onKey = (e) => {
+      if (e.key === "Escape") {
+        e.preventDefault();
+        onClose();
+      } else if (e.key === "ArrowDown") {
+        e.preventDefault();
+        setActive((a) => Math.min(a + 1, items.length - 1));
+      } else if (e.key === "ArrowUp") {
+        e.preventDefault();
+        setActive((a) => Math.max(a - 1, 0));
+      } else if (e.key === "Enter") {
+        e.preventDefault();
+        const it = items[active];
+        if (it) run(it.run);
+      }
+    };
+    window.addEventListener("keydown", onKey);
+    return () => window.removeEventListener("keydown", onKey);
+  }, [open, items, active]);
+
+  if (!open) return null;
+
+  const groups = ["Recent projects", "Navigate to", "Settings"];
+  const activeItem = items[active];
+
+  return (
+    <div className="cmdk-overlay" onMouseDown={onClose}>
+      <div className="cmdk" role="dialog" aria-modal="true" onMouseDown={(e) => e.stopPropagation()}>
+        <div className="cmdk-search">
+          <Icon name="search" />
+          <input
+            ref={inputRef}
+            value={query}
+            onChange={(e) => setQuery(e.target.value)}
+            placeholder="Search…"
+            aria-label="Search"
+          />
+          <button type="button" className="cmdk-close" onClick={onClose} aria-label="Close search">
+            <Icon name="close" />
+          </button>
+        </div>
+
+        <div className="cmdk-body">
+          <div className="cmdk-list">
+            {items.length === 0 ? (
+              <div className="cmdk-empty">No results for “{query}”.</div>
+            ) : (
+              groups.map((g) => {
+                const groupItems = items.filter((it) => it.group === g);
+                if (!groupItems.length) return null;
+                return (
+                  <div className="cmdk-group" key={g}>
+                    <div className="cmdk-group-label">{g}</div>
+                    {groupItems.map((it) => {
+                      const idx = items.indexOf(it);
+                      return (
+                        <button
+                          key={it.id}
+                          type="button"
+                          className={`cmdk-item ${idx === active ? "is-active" : ""}`}
+                          onMouseMove={() => setActive(idx)}
+                          onClick={() => run(it.run)}
+                        >
+                          <span className="cmdk-item-ico"><Icon name={it.icon} /></span>
+                          <span className="cmdk-item-label">{it.label}</span>
+                          {it.project && <Icon name="chevron" className="cmdk-item-go" />}
+                        </button>
+                      );
+                    })}
+                  </div>
+                );
+              })
+            )}
+          </div>
+
+          <div className="cmdk-preview">
+            {activeItem ? (
+              activeItem.project ? (
+                <ProjectPreview project={activeItem.project} user={user} />
+              ) : (
+                <div className="cmdk-pv-nav">
+                  <span className="cmdk-pv-ico"><Icon name={activeItem.icon} /></span>
+                  <h3>{activeItem.label}</h3>
+                  <p>{activeItem.desc}</p>
+                </div>
+              )
+            ) : (
+              <div className="cmdk-pv-nav cmdk-pv-blank">
+                <span className="cmdk-pv-ico"><Icon name="search" /></span>
+                <p>Search projects, pages and settings.</p>
+              </div>
+            )}
+          </div>
+        </div>
+
+        <div className="cmdk-foot">
+          <span className="cmdk-brand">
+            <span className="brand-logo cmdk-logo"><Icon name="controller" /></span>
+          </span>
+          <span className="cmdk-hint">
+            {activeItem?.project ? "Open project" : "Go"} <kbd>↵</kbd>
+          </span>
+        </div>
+      </div>
     </div>
   );
 }
@@ -713,6 +1263,7 @@ const TITLES = {
 
 export default function Dashboard({ user, projects, onBuild, onOpenProject, onSignOut, onNotify }) {
   const [section, setSection] = useState("home");
+  const [paletteOpen, setPaletteOpen] = useState(false);
 
   const recents = useMemo(
     () => [...projects].sort((a, b) => b.createdAt - a.createdAt),
@@ -721,6 +1272,18 @@ export default function Dashboard({ user, projects, onBuild, onOpenProject, onSi
 
   // "Starred / Created / Shared" reuse the project list for now.
   const sectionProjects = section === "shared" ? [] : projects;
+
+  // Cmd/Ctrl-K toggles the command palette from anywhere in the dashboard.
+  useEffect(() => {
+    const onKey = (e) => {
+      if ((e.metaKey || e.ctrlKey) && e.key.toLowerCase() === "k") {
+        e.preventDefault();
+        setPaletteOpen((o) => !o);
+      }
+    };
+    window.addEventListener("keydown", onKey);
+    return () => window.removeEventListener("keydown", onKey);
+  }, []);
 
   return (
     <div className="app">
@@ -747,11 +1310,20 @@ export default function Dashboard({ user, projects, onBuild, onOpenProject, onSi
           />
         )}
         {section === "resources" && <ResourcesView onBuild={onBuild} />}
-        {section === "connectors" && <ConnectorsView onBuild={onBuild} onNotify={onNotify} />}
-        {section === "search" && (
-          <SearchView projects={projects} onOpenProject={onOpenProject} onBuild={onBuild} user={user} />
-        )}
+        {section === "connectors" && <ConnectorsView setSection={setSection} />}
+        {section === "settings" && <SettingsView user={user} onNotify={onNotify} />}
+        {section === "plans" && <PlansView onNotify={onNotify} />}
       </main>
+
+      <CommandPalette
+        open={paletteOpen}
+        onClose={() => setPaletteOpen(false)}
+        recents={recents}
+        onOpenProject={onOpenProject}
+        onNavigate={(s) => setSection(s)}
+        onNotify={onNotify}
+        user={user}
+      />
     </div>
   );
 }
