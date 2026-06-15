@@ -247,6 +247,7 @@ function Workspace({
   userPrompt,
   plan,
   html,
+  streamCode,
   loading,
   stepIndex,
   percent,
@@ -260,11 +261,17 @@ function Workspace({
   error,
 }) {
   const feedRef = useRef(null);
+  const codeRef = useRef(null);
   const [shareOpen, setShareOpen] = useState(false);
 
   useEffect(() => {
     feedRef.current?.scrollTo({ top: feedRef.current.scrollHeight, behavior: "smooth" });
   }, [stepIndex, html, plan]);
+
+  // keep the streaming code view pinned to the latest line
+  useEffect(() => {
+    if (codeRef.current) codeRef.current.scrollTop = codeRef.current.scrollHeight;
+  }, [streamCode]);
 
   useEffect(() => {
     if (!shareOpen) return;
@@ -443,6 +450,14 @@ function Workspace({
             <div className="frame-shell">
               <iframe title="Generated game" srcDoc={wrapPreviewHtml(html)} sandbox="allow-scripts" />
             </div>
+          ) : streamCode ? (
+            <div className="ws-codestream">
+              <div className="ws-codestream-head">
+                <span className="live" /> FORGE is writing your game…
+                <span className="ws-codestream-count">{streamCode.length.toLocaleString()} chars</span>
+              </div>
+              <pre ref={codeRef} className="ws-codestream-body"><code>{streamCode}</code></pre>
+            </div>
           ) : (
             <div className="stage-empty">
               <div>
@@ -459,6 +474,15 @@ function Workspace({
 }
 
 /* --------------------------------------------------------------- helpers --- */
+
+// Safety net: the model is told to emit raw HTML, but strip ``` fences if any slip in.
+function stripFences(text) {
+  let t = (text || "").trim();
+  if (t.startsWith("```")) {
+    t = t.replace(/^```[a-zA-Z]*\s*\n?/, "").replace(/\n?```\s*$/, "");
+  }
+  return t.trim();
+}
 
 function safeFileName(value) {
   const slug = (value || "")
@@ -530,6 +554,7 @@ export default function Home() {
   const [followup, setFollowup] = useState("");
   const [view, setView] = useState("home"); // home | workspace
   const [html, setHtml] = useState("");
+  const [streamCode, setStreamCode] = useState(""); // live HTML as it streams in
   const [plan, setPlan] = useState("");
   const [activePrompt, setActivePrompt] = useState("");
   const [loading, setLoading] = useState(false);
@@ -623,11 +648,11 @@ export default function Home() {
     setPrompt(requestPrompt);
     setView("workspace");
     setHtml("");
+    setStreamCode("");
     setPlan("");
     setError("");
     setLoading(true);
     runStepAnimation();
-    const startedAt = Date.now();
 
     // kick off a quick concept in parallel for the chat panel
     fetch("/api/generate", {
@@ -645,20 +670,36 @@ export default function Home() {
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ prompt: requestPrompt, mode: "generate" }),
       });
-      const data = await res.json();
-      if (!res.ok) throw new Error(data?.error || "Generation failed.");
 
-      const elapsed = Date.now() - startedAt;
-      if (elapsed < 1100) await new Promise((r) => setTimeout(r, 1100 - elapsed));
+      if (!res.ok || !res.body) {
+        const data = await res.json().catch(() => ({}));
+        throw new Error(data?.error || "Generation failed.");
+      }
 
-      setHtml(data.html);
+      // Stream the HTML in as it's written so the build feels live.
+      const reader = res.body.getReader();
+      const decoder = new TextDecoder();
+      let acc = "";
+      while (true) {
+        const { value, done } = await reader.read();
+        if (done) break;
+        acc += decoder.decode(value, { stream: true });
+        setStreamCode(acc);
+        // nudge progress toward (but never to) 100 as the file grows
+        setPercent(Math.min(96, 12 + Math.floor(acc.length / 180)));
+      }
+
+      const finalHtml = stripFences(acc);
+      if (!finalHtml) throw new Error("Generation returned nothing. Try again.");
+
+      setHtml(finalHtml);
       setPercent(100);
       setStepIndex(BUILD_STEPS.length);
       saveProject({
         id: crypto?.randomUUID?.() || String(Date.now()),
         title: deriveTitle(requestPrompt),
         prompt: requestPrompt,
-        html: data.html,
+        html: finalHtml,
         scene: sceneFromPrompt(requestPrompt),
         createdAt: Date.now(),
       });
@@ -718,6 +759,7 @@ export default function Home() {
           userPrompt={activePrompt}
           plan={plan}
           html={html}
+          streamCode={streamCode}
           loading={loading}
           stepIndex={stepIndex}
           percent={percent}

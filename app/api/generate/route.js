@@ -4,11 +4,13 @@ import path from "path";
 import {
   detectGenre,
   detectVisualTheme,
+  buildLessonsContext,
 } from "../../../lib/memory";
 import {
   buildGameBlueprint,
   CORE_GAME_KNOWLEDGE,
 } from "../../../lib/game-knowledge";
+import { POPULARITY_DNA } from "../../../lib/popularity-dna";
 
 export const runtime = "nodejs";
 
@@ -185,7 +187,9 @@ function buildGenerateSystemPrompt(lessonsContext, visualTheme, blueprint) {
       lessonsContext || "(No lessons yet — make strong creative choices.)"
     )
       .replace("[VISUAL_THEME_PLACEHOLDER]", themeDescription)
-      .replace("[BLUEPRINT_PLACEHOLDER]", blueprint)
+      .replace("[BLUEPRINT_PLACEHOLDER]", blueprint) +
+    "\n\n" +
+    POPULARITY_DNA
   );
 }
 
@@ -239,7 +243,7 @@ export async function POST(request) {
     const genre = detectGenre(prompt);
     const visualTheme = detectVisualTheme(prompt);
     const [lessonsContext, blueprint] = await Promise.all([
-      Promise.resolve(""),
+      buildLessonsContext().catch(() => ""),
       buildGameBlueprint(prompt),
     ]);
     const systemPrompt = buildGenerateSystemPrompt(
@@ -262,41 +266,58 @@ export async function POST(request) {
     const isPlan = mode === "plan";
     const anthropic = new Anthropic({ apiKey });
 
-    const message = await anthropic.messages.create({
-      model: isPlan ? PLAN_MODEL : GENERATE_MODEL,
-      max_tokens: isPlan ? MAX_PLAN_TOKENS : MAX_GENERATE_TOKENS,
-      system: isPlan ? PLAN_SYSTEM_PROMPT : systemPrompt,
-      messages: [{ role: "user", content: prompt }],
-    });
-    const text = message.content
-      .filter((block) => block.type === "text")
-      .map((block) => block.text)
-      .join("");
-
-    const tokenCount = message.usage?.output_tokens ?? 0;
-    const outputLength = text.length;
-    const success = true;
-
-    if (!isPlan) {
-      const generationPayload = {
-        prompt,
-        genre,
-        mode,
-        outputLength,
-        tokenCount,
-        model: GENERATE_MODEL,
-        success,
-        visualTheme,
-      };
-
-      Promise.resolve().catch(() => {});
-    }
-
+    // The concept blurb is short — keep it as a single fast JSON response.
     if (isPlan) {
+      const message = await anthropic.messages.create({
+        model: PLAN_MODEL,
+        max_tokens: MAX_PLAN_TOKENS,
+        system: PLAN_SYSTEM_PROMPT,
+        messages: [{ role: "user", content: prompt }],
+      });
+      const text = message.content
+        .filter((block) => block.type === "text")
+        .map((block) => block.text)
+        .join("");
       return Response.json({ plan: text.trim() });
     }
 
-    return Response.json({ html: stripFences(text) });
+    // A full game can take a minute. Stream the raw HTML to the client as it's
+    // written so the build feels live instead of a long blank wait.
+    const encoder = new TextEncoder();
+    const llmStream = anthropic.messages.stream({
+      model: GENERATE_MODEL,
+      max_tokens: MAX_GENERATE_TOKENS,
+      system: systemPrompt,
+      messages: [{ role: "user", content: prompt }],
+    });
+
+    const readable = new ReadableStream({
+      async start(controller) {
+        try {
+          for await (const event of llmStream) {
+            if (
+              event.type === "content_block_delta" &&
+              event.delta?.type === "text_delta" &&
+              event.delta.text
+            ) {
+              controller.enqueue(encoder.encode(event.delta.text));
+            }
+          }
+          controller.close();
+        } catch (err) {
+          console.error("STREAM ERROR:", err?.message || String(err));
+          controller.error(err);
+        }
+      },
+    });
+
+    return new Response(readable, {
+      headers: {
+        "Content-Type": "text/plain; charset=utf-8",
+        "Cache-Control": "no-store, no-transform",
+        "X-Accel-Buffering": "no",
+      },
+    });
   } catch (error) {
     console.error("GENERATE ERROR:", error.message, error.status ?? "", error.cause?.message ?? "", error.stack?.split("\n")[1] ?? "");
     return Response.json(

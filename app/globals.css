@@ -1228,6 +1228,53 @@ a {
   margin: 0 0 6px;
 }
 
+/* live code stream while a game is generating */
+.ws-codestream {
+  height: 100%;
+  display: flex;
+  flex-direction: column;
+  border-radius: 16px;
+  overflow: hidden;
+  border: 1px solid var(--border);
+  background: #0c0c12;
+  box-shadow: var(--shadow);
+}
+.ws-codestream-head {
+  display: flex;
+  align-items: center;
+  gap: 9px;
+  padding: 11px 16px;
+  border-bottom: 1px solid var(--border);
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--muted);
+}
+.ws-codestream-count {
+  margin-left: auto;
+  font-size: 12px;
+  font-weight: 500;
+  color: var(--dim);
+  font-variant-numeric: tabular-nums;
+}
+.ws-codestream-body {
+  flex: 1;
+  min-height: 0;
+  overflow: auto;
+  margin: 0;
+  padding: 14px 16px;
+  font-family: ui-monospace, SFMono-Regular, "SF Mono", Menlo, Consolas, monospace;
+  font-size: 12px;
+  line-height: 1.55;
+  color: #b9c2d0;
+  white-space: pre-wrap;
+  word-break: break-word;
+  tab-size: 2;
+}
+.ws-codestream-body code {
+  font: inherit;
+  color: inherit;
+}
+
 /* ---------------------------------------------------------------- toast --- */
 
 .toast {
