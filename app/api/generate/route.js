@@ -12,7 +12,7 @@ import {
 
 export const runtime = "nodejs";
 
-const MAX_GENERATE_TOKENS = 700;
+const MAX_GENERATE_TOKENS = 12000;
 const MAX_PLAN_TOKENS = 140;
 const MAX_PROMPT_LENGTH = 300;
 const MAX_REQUESTS_PER_HOUR = 8;
@@ -39,6 +39,25 @@ const VISUAL_THEME_DESCRIPTIONS = {
   fantasy:
     "fantasy: Rich deep background — dark purple #1a0a2e or dark green #0a1a0a. Game elements in gold #ffd700, royal purple #7b2d8b, emerald #00a86b, crimson #dc143c. Ornate feel. Title text looks like it belongs on a fantasy game.",
 };
+
+// FORGE Game Studio — adapted from the Console agent (agent_01UB3sTsea4JME7gxJnR7pjf,
+// claude-sonnet-4-6). That agent has no tools/MCP/skills, so its value is its prompt;
+// we run it inline in this one-shot pipeline rather than as a managed-agent session.
+// SIMPLE MODE is locked on; the GameCraft rules below stay authoritative on conflict.
+const FORGE_PREAMBLE = `You are FORGE, a multi-mode AI game development engine — and you are the studio powering GameCraft. In this pipeline you ALWAYS operate in SIMPLE MODE: the user describes a game and you output ONE complete, self-contained, immediately-playable HTML file — nothing before it and nothing after it.
+
+FORGE quality bar for every build:
+- Title screen with a short hook/story and one clear Start button
+- Polished visuals: particle effects and screen shake on impactful moments
+- Procedural Web Audio API sound effects (create AudioContext on the first user interaction; never autoplay)
+- Visible HUD, a clear win state, and a game-over screen with restart
+- Smooth 60fps: object pooling, delta time (cap dt at 0.05), requestAnimationFrame
+
+Never enter DIRECTOR mode (no questions, no phased planning) and never return partial code or commentary here — always ship the full playable file. The GameCraft rules that follow are absolute and override anything above if they ever conflict, especially the sandbox limits and the exact Start-button pattern.
+
+---
+
+`;
 
 const GENERATE_SYSTEM_PROMPT = `You are the game generation engine powering GameCraft, an AI-powered browser game creator. Real people with no coding skills will play your output within seconds of typing their idea. Your output is the entire product — no human reviews it before it goes live. Make every person feel like a real game developer.
 
@@ -159,12 +178,15 @@ function buildGenerateSystemPrompt(lessonsContext, visualTheme, blueprint) {
     VISUAL_THEME_DESCRIPTIONS[visualTheme] ||
     VISUAL_THEME_DESCRIPTIONS.neon;
 
-  return GENERATE_SYSTEM_PROMPT.replace(
-    "[LESSONS_PLACEHOLDER]",
-    lessonsContext || "(No lessons yet — make strong creative choices.)"
-  )
-    .replace("[VISUAL_THEME_PLACEHOLDER]", themeDescription)
-    .replace("[BLUEPRINT_PLACEHOLDER]", blueprint);
+  return (
+    FORGE_PREAMBLE +
+    GENERATE_SYSTEM_PROMPT.replace(
+      "[LESSONS_PLACEHOLDER]",
+      lessonsContext || "(No lessons yet — make strong creative choices.)"
+    )
+      .replace("[VISUAL_THEME_PLACEHOLDER]", themeDescription)
+      .replace("[BLUEPRINT_PLACEHOLDER]", blueprint)
+  );
 }
 
 export async function POST(request) {
