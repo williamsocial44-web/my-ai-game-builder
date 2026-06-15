@@ -5,7 +5,7 @@ import { useAuth } from "./providers";
 import AuthModal from "./auth-modal";
 import Dashboard from "./dashboard";
 import { wrapPreviewHtml } from "../lib/preview";
-import { listGames, createGame, publishGame } from "../lib/games";
+import { listGames, createGame, publishGame, updateGameHtml } from "../lib/games";
 
 /* --------------------------------------------------------------- content --- */
 
@@ -262,6 +262,8 @@ function Workspace({
   onPublish,
   onNotify,
   error,
+  feedback,
+  onFeedback,
 }) {
   const feedRef = useRef(null);
   const codeRef = useRef(null);
@@ -376,6 +378,23 @@ function Workspace({
                 <span className="dot-logo" /> Gamecraft
               </div>
               Your game is live in the preview. Want changes? Just tell me — e.g. “make it faster”, “add a boss”, or “use a retro theme”.
+              <div className="fb">
+                {feedback ? (
+                  <span className="fb-thanks">
+                    <Icon name="check" /> Thanks — that helps me learn.
+                  </span>
+                ) : (
+                  <>
+                    <span className="fb-label">How’d it turn out?</span>
+                    <button type="button" className="fb-btn" onClick={() => onFeedback?.(1)} aria-label="Good">
+                      <Icon name="check" /> Love it
+                    </button>
+                    <button type="button" className="fb-btn fb-btn-down" onClick={() => onFeedback?.(-1)} aria-label="Needs work">
+                      Needs work
+                    </button>
+                  </>
+                )}
+              </div>
             </div>
           )}
 
@@ -550,6 +569,8 @@ export default function Home() {
   const { user, loading: authLoading, signOut } = useAuth();
   const [projects, setProjects] = useState([]);
   const [activeGameId, setActiveGameId] = useState(null);
+  const [activeGenId, setActiveGenId] = useState(null); // generation row id for feedback
+  const [feedback, setFeedback] = useState(null); // null | "up" | "down"
 
   // Logged out: load games from this browser. Logged in: load from the cloud.
   useEffect(() => {
@@ -664,6 +685,8 @@ export default function Home() {
     setPlan("");
     setError("");
     setActiveGameId(null);
+    setActiveGenId(null);
+    setFeedback(null);
     setLoading(true);
     runStepAnimation();
 
@@ -688,6 +711,9 @@ export default function Home() {
         const data = await res.json().catch(() => ({}));
         throw new Error(data?.error || "Generation failed.");
       }
+
+      // Generation row id (for the feedback widget) rides back on a header.
+      setActiveGenId(res.headers.get("X-Generation-Id") || null);
 
       // Stream the HTML in as it's written so the build feels live.
       const reader = res.body.getReader();
@@ -728,9 +754,84 @@ export default function Home() {
   function handleFollowup() {
     const text = followup.trim();
     if (!text) return;
-    const combined = `${activePrompt}\n\nRevision: ${text}`;
     setFollowup("");
-    generate(combined.slice(0, 280));
+    // True iteration: edit the game we already have instead of rebuilding it
+    // from scratch. Falls back to a fresh build if there's nothing to edit yet.
+    if (html) {
+      editGame(text);
+    } else {
+      generate(`${activePrompt}\n\nRevision: ${text}`.slice(0, 280));
+    }
+  }
+
+  // Iterate on the current game: send its HTML + the change request to the
+  // editor, stream the updated file back, and persist it.
+  async function editGame(instruction) {
+    const baseHtml = html;
+    if (!baseHtml) return;
+    setError("");
+    setStreamCode("");
+    setHtml("");
+    setLoading(true);
+    runStepAnimation();
+
+    try {
+      const res = await fetch("/api/generate", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ mode: "edit", html: baseHtml, instruction }),
+      });
+
+      if (!res.ok || !res.body) {
+        const data = await res.json().catch(() => ({}));
+        throw new Error(data?.error || "Couldn’t apply that change.");
+      }
+
+      const reader = res.body.getReader();
+      const decoder = new TextDecoder();
+      let acc = "";
+      while (true) {
+        const { value, done } = await reader.read();
+        if (done) break;
+        acc += decoder.decode(value, { stream: true });
+        setStreamCode(acc);
+        setPercent(Math.min(96, 12 + Math.floor(acc.length / 180)));
+      }
+
+      const finalHtml = stripFences(acc);
+      if (!finalHtml) throw new Error("That change came back empty. Try again.");
+
+      setHtml(finalHtml);
+      setPercent(100);
+      setStepIndex(BUILD_STEPS.length);
+
+      // Keep the saved copy in sync — locally always, and in the cloud when
+      // this is a signed-in user's saved game.
+      setProjects((prev) =>
+        prev.map((p) => (p.id === activeGameId ? { ...p, html: finalHtml } : p))
+      );
+      if (user && activeGameId) {
+        updateGameHtml(activeGameId, finalHtml).catch(() => {});
+      }
+    } catch (err) {
+      setError(err.message || "Something went wrong.");
+      setHtml(baseHtml); // restore the previous game so nothing is lost
+    } finally {
+      clearStepTimer();
+      setLoading(false);
+    }
+  }
+
+  // Record whether the player liked the freshly built game (grows the AI's
+  // learning loop). Optimistic — the UI updates instantly, the write is async.
+  function submitFeedback(rating) {
+    setFeedback(rating > 0 ? "up" : "down");
+    if (!activeGenId) return;
+    fetch("/api/feedback", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ id: activeGenId, rating }),
+    }).catch(() => {});
   }
 
   function downloadGame() {
@@ -760,6 +861,8 @@ export default function Home() {
     setHtml(project.html);
     setActivePrompt(project.prompt);
     setActiveGameId(typeof project.id === "string" ? project.id : null);
+    setActiveGenId(null);
+    setFeedback(null);
     setPlan("");
     setError("");
     setView("workspace");
@@ -814,6 +917,8 @@ export default function Home() {
           onPublish={publishActive}
           onNotify={setToast}
           error={error}
+          feedback={feedback}
+          onFeedback={submitFeedback}
         />
         {toast && <div className="toast">{toast}</div>}
       </>

@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useId, useMemo, useRef, useState } from "react";
+import { listSessions } from "../lib/games";
 
 /* ----------------------------------------------------------------- icons --- */
 
@@ -51,6 +52,8 @@ function Icon({ name, className }) {
     code: <path d="m9 8-5 4 5 4m6-8 5 4-5 4" />,
     copy: <><rect x="9" y="9" width="11" height="11" rx="2" /><path d="M5 15V5a2 2 0 0 1 2-2h8" /></>,
     download: <><path d="M12 3v12m0 0 4-4m-4 4-4-4" /><path d="M4 17v2a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2v-2" /></>,
+    chart: <><path d="M4 20V4" /><path d="M4 20h16" /><rect x="7" y="12" width="3" height="5" rx="1" fill="currentColor" stroke="none" /><rect x="12" y="8" width="3" height="9" rx="1" fill="currentColor" stroke="none" /><rect x="17" y="5" width="3" height="12" rx="1" fill="currentColor" stroke="none" /></>,
+    clock: <><circle cx="12" cy="12" r="9" /><path d="M12 7v5l3 2" /></>,
   };
   return <svg {...p}>{s[name] || s.grid}</svg>;
 }
@@ -364,8 +367,9 @@ function Thumb({ scene, cover }) {
 
 const NAV = [
   { id: "home", label: "Home", icon: "home" },
-  { id: "resources", label: "Resources", icon: "compass" },
-  { id: "connectors", label: "Share & export", icon: "share" },
+  { id: "templates", label: "Templates", icon: "compass" },
+  { id: "insights", label: "Insights", icon: "chart" },
+  { id: "connectors", label: "Connectors", icon: "nodes" },
 ];
 
 const BOTTOM_NAV = [
@@ -572,8 +576,8 @@ function HomeView({ user, projects, onBuild, onOpenProject, setSection, onNotify
     <div className="home">
       <div className="home-grad" aria-hidden />
       <div className="home-hero">
-        <button type="button" className="home-pill" onClick={() => setSection("resources")}>
-          <Icon name="sparkle" /> Browse the game gallery <Icon name="chevron" className="pill-arrow" />
+        <button type="button" className="home-pill" onClick={() => setSection("templates")}>
+          <Icon name="sparkle" /> Browse templates <Icon name="chevron" className="pill-arrow" />
         </button>
         <h1>What are we building today, {name}?</h1>
 
@@ -685,7 +689,7 @@ function HomeView({ user, projects, onBuild, onOpenProject, setSection, onNotify
             <button type="button" className={tab === "recent" ? "is-active" : ""} onClick={() => setTab("recent")}>Recently viewed</button>
             <button type="button" className={tab === "templates" ? "is-active" : ""} onClick={() => setTab("templates")}>Templates</button>
           </div>
-          <button type="button" className="shelf-all" onClick={() => setSection(tab === "templates" ? "resources" : "projects")}>
+          <button type="button" className="shelf-all" onClick={() => setSection(tab === "templates" ? "templates" : "projects")}>
             Browse all <Icon name="chevron" className="pill-arrow" />
           </button>
         </div>
@@ -824,11 +828,11 @@ function ProjectsView({ title, user, projects, onOpenProject, setSection }) {
 
 const RES_COVERS = ["shot", "art", "device"];
 
-function ResourcesView({ onBuild }) {
+function TemplatesView({ onBuild }) {
   return (
     <div className="page res-page">
       <div className="res-head">
-        <h1>Game gallery</h1>
+        <h1>Game templates</h1>
         <p>Start from a template to build your next game — {TEMPLATES.length} ready-made starters across every genre. Click one to build it.</p>
       </div>
 
@@ -847,54 +851,15 @@ function ResourcesView({ onBuild }) {
   );
 }
 
-/* --------------------------------------------------- share & export view --- */
+/* -------------------------------------------------------- connectors view --- */
 
-const SHARE_FEATURES = [
-  { icon: "code", title: "Embed anywhere", desc: "Copy an <iframe> snippet and drop your game into any website, blog, or Notion page — no hosting required." },
-  { icon: "external", title: "Play standalone", desc: "Open any game full-screen in its own tab — perfect for sharing your screen or playing distraction-free." },
-  { icon: "download", title: "Download HTML", desc: "Export the whole game as one self-contained file you can host anywhere or keep forever." },
-  { icon: "copy", title: "Copy the code", desc: "Grab the full single-file source to tweak by hand or drop into your own project." },
-];
-
-const SHARE_ROADMAP = ["Shareable game links", "Global leaderboards", "Discord webhook", "Tip jar (Stripe)"];
-
-function ConnectorsView({ setSection }) {
+function ConnectorsView() {
   return (
     <div className="page">
       <div className="page-head">
-        <h1>Share &amp; export</h1>
+        <h1>Connectors</h1>
       </div>
-      <p className="page-lead">
-        Every game you build is a self-contained file you fully own. Open one in the builder and use the
-        <strong> Share</strong> menu to embed it, play it standalone, or export it — all free, no account on the other end.
-      </p>
-
-      <div className="conn-grid">
-        {SHARE_FEATURES.map((f) => (
-          <div key={f.title} className="conn-card conn-card-static">
-            <Icon name={f.icon} />
-            <h3>{f.title}</h3>
-            <p>{f.desc}</p>
-          </div>
-        ))}
-      </div>
-
-      <div className="share-cta">
-        <span>
-          <strong>Ready to share something?</strong>
-          <small>Open a game from your projects, then hit Share in the top bar.</small>
-        </span>
-        <button type="button" className="btn btn-primary" onClick={() => setSection("projects")}>
-          <Icon name="grid" /> Open a game
-        </button>
-      </div>
-
-      <h2 className="proj-sub share-roadmap-label">On the roadmap</h2>
-      <div className="share-roadmap">
-        {SHARE_ROADMAP.map((r) => (
-          <span key={r} className="roadmap-chip">{r}</span>
-        ))}
-      </div>
+      <p className="page-lead">Coming soon. Connectors will allow you to integrate your games with external services.</p>
     </div>
   );
 }
@@ -1064,6 +1029,144 @@ function PlansView({ onNotify }) {
   );
 }
 
+/* -------------------------------------------------------- insights view --- */
+
+const SCENE_LABELS = {
+  neon: "Neon / arcade",
+  space: "Space",
+  clicker: "Idle / clicker",
+  word: "Word & puzzle",
+  cards: "Cards",
+  platformer: "Platformer",
+  fantasy: "Fantasy",
+  retro: "Retro",
+};
+
+function fmtDuration(ms) {
+  if (!ms || ms < 1000) return "—";
+  const s = Math.round(ms / 1000);
+  if (s < 60) return `${s}s`;
+  const m = Math.floor(s / 60);
+  const rem = s % 60;
+  return rem ? `${m}m ${rem}s` : `${m}m`;
+}
+
+function InsightsView({ projects }) {
+  const [sessions, setSessions] = useState(null); // null = loading, [] = none
+
+  useEffect(() => {
+    let active = true;
+    listSessions().then((rows) => {
+      if (active) setSessions(Array.isArray(rows) ? rows : []);
+    });
+    return () => {
+      active = false;
+    };
+  }, []);
+
+  const stats = useMemo(() => {
+    const totalGames = projects.length;
+    const totalPlays = projects.reduce((sum, p) => sum + (p.plays || 0), 0);
+    const published = projects.filter((p) => p.visibility === "public").length;
+
+    const byScene = {};
+    for (const p of projects) {
+      const key = p.scene || "neon";
+      byScene[key] = (byScene[key] || 0) + 1;
+    }
+    const scenes = Object.entries(byScene)
+      .map(([scene, count]) => ({ scene, count }))
+      .sort((a, b) => b.count - a.count);
+
+    const topGames = [...projects]
+      .sort((a, b) => (b.plays || 0) - (a.plays || 0))
+      .slice(0, 5);
+
+    return { totalGames, totalPlays, published, scenes, topGames };
+  }, [projects]);
+
+  const avgSession = useMemo(() => {
+    if (!sessions || !sessions.length) return 0;
+    const sum = sessions.reduce((a, s) => a + (s.duration_ms || 0), 0);
+    return sum / sessions.length;
+  }, [sessions]);
+
+  const maxSceneCount = stats.scenes.length ? stats.scenes[0].count : 0;
+
+  const cards = [
+    { label: "Games built", value: stats.totalGames.toLocaleString(), icon: "controller" },
+    { label: "Total plays", value: stats.totalPlays.toLocaleString(), icon: "play" },
+    { label: "Published", value: stats.published.toLocaleString(), icon: "external" },
+    {
+      label: "Avg. play time",
+      value: sessions === null ? "…" : fmtDuration(avgSession),
+      icon: "clock",
+    },
+  ];
+
+  return (
+    <div className="page ins-page">
+      <div className="page-head">
+        <h1>Insights</h1>
+      </div>
+      <p className="page-lead">
+        How your games are performing. Play counts and play-time come from people playing your
+        <strong> published</strong> games — publish more to see these grow.
+      </p>
+
+      <div className="ins-cards">
+        {cards.map((c) => (
+          <div key={c.label} className="ins-card">
+            <span className="ins-card-ico"><Icon name={c.icon} /></span>
+            <strong>{c.value}</strong>
+            <small>{c.label}</small>
+          </div>
+        ))}
+      </div>
+
+      <div className="ins-grid">
+        <section className="ins-panel">
+          <h2>Top games by plays</h2>
+          {stats.topGames.length === 0 || stats.totalPlays === 0 ? (
+            <p className="ins-empty">No plays yet. Publish a game and share its link to start collecting plays.</p>
+          ) : (
+            <ol className="ins-top">
+              {stats.topGames.map((g) => (
+                <li key={g.id || g.title}>
+                  <span className={`scene scene-${g.scene} ins-top-thumb`} />
+                  <span className="ins-top-main">
+                    <strong>{g.title}</strong>
+                    <small>{(g.plays || 0).toLocaleString()} plays</small>
+                  </span>
+                </li>
+              ))}
+            </ol>
+          )}
+        </section>
+
+        <section className="ins-panel">
+          <h2>What you build most</h2>
+          {stats.scenes.length === 0 ? (
+            <p className="ins-empty">Build a game to see your genre mix here.</p>
+          ) : (
+            <ul className="ins-bars">
+              {stats.scenes.map(({ scene, count }) => (
+                <li key={scene}>
+                  <span className="ins-bar-label">{SCENE_LABELS[scene] || scene}</span>
+                  <span className="ins-bar-track">
+                    <i style={{ width: `${maxSceneCount ? (count / maxSceneCount) * 100 : 0}%` }} />
+                  </span>
+                  <span className="ins-bar-count">{count}</span>
+                </li>
+              ))}
+            </ul>
+          )}
+        </section>
+      </div>
+    </div>
+  );
+}
+
 /* -------------------------------------------------------- command palette --- */
 
 function ProjectPreview({ project, user }) {
@@ -1124,8 +1227,9 @@ function CommandPalette({ open, onClose, recents, onOpenProject, onNavigate, onN
       { id: "new", group: "Navigate to", label: "Create new game", icon: "plus", desc: "Start a fresh build from a blank prompt", run: () => onNavigate("home") },
       { id: "projects", group: "Navigate to", label: "All projects", icon: "grid", desc: "Everything you've built", run: () => onNavigate("projects") },
       { id: "starred", group: "Navigate to", label: "Starred", icon: "star", desc: "Games you've starred", run: () => onNavigate("starred") },
-      { id: "resources", group: "Navigate to", label: "Templates · Game gallery", icon: "compass", desc: "Ready-made games to remix", run: () => onNavigate("resources") },
-      { id: "connectors", group: "Navigate to", label: "Share & export", icon: "share", desc: "Embed, publish, and export your games", run: () => onNavigate("connectors") },
+      { id: "templates", group: "Navigate to", label: "Templates", icon: "compass", desc: "Ready-made games to remix", run: () => onNavigate("templates") },
+      { id: "insights", group: "Navigate to", label: "Insights", icon: "chart", desc: "Plays, play-time, and your genre mix", run: () => onNavigate("insights") },
+      { id: "connectors", group: "Navigate to", label: "Connectors", icon: "nodes", desc: "External integrations", run: () => onNavigate("connectors") },
       { id: "settings", group: "Settings", label: "Settings", icon: "gear", desc: "Workspace preferences", run: () => onNavigate("settings") },
       { id: "plans", group: "Settings", label: "Plans & credits", icon: "card", desc: "Upgrade for more builds and faster generations", run: () => onNavigate("plans") },
     ],
@@ -1309,8 +1413,9 @@ export default function Dashboard({ user, projects, onBuild, onOpenProject, onSi
             setSection={setSection}
           />
         )}
-        {section === "resources" && <ResourcesView onBuild={onBuild} />}
-        {section === "connectors" && <ConnectorsView setSection={setSection} />}
+        {section === "templates" && <TemplatesView onBuild={onBuild} />}
+        {section === "insights" && <InsightsView projects={projects} />}
+        {section === "connectors" && <ConnectorsView />}
         {section === "settings" && <SettingsView user={user} onNotify={onNotify} />}
         {section === "plans" && <PlansView onNotify={onNotify} />}
       </main>

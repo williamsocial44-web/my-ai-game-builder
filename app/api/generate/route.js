@@ -5,11 +5,14 @@ import {
   detectGenre,
   detectVisualTheme,
   buildLessonsContext,
+  saveGeneration,
+  extractAndSaveLesson,
 } from "../../../lib/memory";
 import {
   buildGameBlueprint,
   CORE_GAME_KNOWLEDGE,
 } from "../../../lib/game-knowledge";
+import { retrieveGameContext } from "../../../lib/catalog/retrieve";
 import { POPULARITY_DNA } from "../../../lib/popularity-dna";
 
 export const runtime = "nodejs";
@@ -17,6 +20,8 @@ export const runtime = "nodejs";
 const MAX_GENERATE_TOKENS = 12000;
 const MAX_PLAN_TOKENS = 140;
 const MAX_PROMPT_LENGTH = 300;
+const MAX_EDIT_INSTRUCTION_LENGTH = 300;
+const MAX_EDIT_HTML_LENGTH = 60000;
 const MAX_REQUESTS_PER_HOUR = 8;
 const GENERATE_MODEL = process.env.GENERATE_MODEL || "claude-sonnet-4-6";
 const PLAN_MODEL = process.env.PLAN_MODEL || "claude-haiku-4-5-20251001";
@@ -103,9 +108,6 @@ Place ALL game logic inside functions called AFTER the button is clicked. Never 
 GAME REQUIREMENTS:
 Title screen with game name and a single clearly-labeled Start/Play button (id="startBtn"). Controls shown on screen at all times during play. Score or progress visible if game type supports it. Win or lose condition. Restart button after game over. Fun for at least 2 minutes. Difficulty increases over time for arcade games. On-screen touch buttons for mobile on any game using arrow keys or WASD. Keep output under 450 lines total.
 
-LEADERBOARD (optional, only if the game has a numeric score):
-At game over, call window.gamecraft && window.gamecraft.submitScore(finalScore) exactly once with the player's final integer score. It is always safe to call (a no-op if undefined). Do not build your own leaderboard UI — the platform handles display.
-
 GAME FEEL:
 Every player action needs immediate feedback. Hit an enemy: flash red. Collect item: particle burst. Score point: counter animates. Game over: overlay with score and restart. Win: celebration particles. Controls must feel instant with zero lag.
 
@@ -115,6 +117,19 @@ LESSONS FROM PREVIOUS GENERATIONS — apply every one of these:
 [BLUEPRINT_PLACEHOLDER]
 
 ${CORE_GAME_KNOWLEDGE}`;
+
+// Edit mode powers the in-workspace "ask for a change" chat. Unlike generate,
+// it receives the CURRENT game and returns the SAME game with only the requested
+// change applied — this is the Lovable-style iterate-on-what-you-have loop.
+const EDIT_SYSTEM_PROMPT = `You are the live game editor inside GameCraft. You are given a COMPLETE, working single-file HTML game and a player's plain-language change request. Apply ONLY the requested change (plus whatever small adjustments that change strictly requires) and return the ENTIRE updated HTML file.
+
+ABSOLUTE RULES:
+- Preserve everything the user did NOT ask to change — keep the existing mechanics, layout, theme, variable names, and Start-button wiring intact.
+- Output raw HTML only. No markdown, no code fences, no commentary. First character must be < and last must be >.
+- Keep it a single self-contained file: all CSS in a <style> tag, all JS in a <script> tag at the end of <body>. Zero external dependencies, no CDN, no fetch, no external images or fonts.
+- It must keep working in a sandboxed iframe with allow-scripts only — no localStorage, sessionStorage, cookies, parent access, or dialogs.
+- Keep the id="startBtn" Start button and the startGame() pattern working.
+- Do not shrink or delete unrelated features. Return the full file every time, not a diff.`;
 
 const PLAN_SYSTEM_PROMPT = `You are a game concept planner for GameCraft. The user describes a game idea — anything from 2D puzzles to 3D shooters to idle clickers to RPGs. Write a punchy 5-line concept in plain text only — no markdown, no bullets, no asterisks, no headers.
 
@@ -178,10 +193,14 @@ function stripFences(text) {
   return t.trim();
 }
 
-function buildGenerateSystemPrompt(lessonsContext, visualTheme, blueprint) {
+function buildGenerateSystemPrompt(lessonsContext, visualTheme, blueprint, catalogContext) {
   const themeDescription =
     VISUAL_THEME_DESCRIPTIONS[visualTheme] ||
     VISUAL_THEME_DESCRIPTIONS.neon;
+
+  const blueprintBlock = catalogContext
+    ? `${blueprint}\n\n${catalogContext}`
+    : blueprint;
 
   return (
     FORGE_PREAMBLE +
@@ -190,7 +209,7 @@ function buildGenerateSystemPrompt(lessonsContext, visualTheme, blueprint) {
       lessonsContext || "(No lessons yet — make strong creative choices.)"
     )
       .replace("[VISUAL_THEME_PLACEHOLDER]", themeDescription)
-      .replace("[BLUEPRINT_PLACEHOLDER]", blueprint) +
+      .replace("[BLUEPRINT_PLACEHOLDER]", blueprintBlock) +
     "\n\n" +
     POPULARITY_DNA
   );
@@ -218,7 +237,17 @@ export async function POST(request) {
     }
 
     let prompt = body?.prompt;
-    const mode = body?.mode === "plan" ? "plan" : "generate";
+    const mode =
+      body?.mode === "plan"
+        ? "plan"
+        : body?.mode === "edit"
+          ? "edit"
+          : "generate";
+
+    // Edit mode tweaks an existing game instead of describing a new one.
+    if (mode === "edit") {
+      return handleEdit(body);
+    }
 
     if (!prompt || typeof prompt !== "string" || !prompt.trim()) {
       return Response.json(
@@ -245,6 +274,13 @@ export async function POST(request) {
 
     const genre = detectGenre(prompt);
     const visualTheme = detectVisualTheme(prompt);
+    const catalogContext = (() => {
+      try {
+        return retrieveGameContext(prompt);
+      } catch {
+        return "";
+      }
+    })();
     const [lessonsContext, blueprint] = await Promise.all([
       buildLessonsContext().catch(() => ""),
       buildGameBlueprint(prompt),
@@ -252,7 +288,8 @@ export async function POST(request) {
     const systemPrompt = buildGenerateSystemPrompt(
       lessonsContext,
       visualTheme,
-      blueprint
+      blueprint,
+      catalogContext
     );
 
     const apiKey = process.env.ANTHROPIC_API_KEY;
@@ -284,58 +321,36 @@ export async function POST(request) {
       return Response.json({ plan: text.trim() });
     }
 
-    // A full game can take a minute. Stream the raw HTML to the client as it's
-    // written so the build feels live instead of a long blank wait.
-    const encoder = new TextEncoder();
-    const llmStream = anthropic.messages.stream({
+    // Log the generation up-front so its id can ride back on a header — the
+    // client attaches the player's rating to it later (see /api/feedback).
+    const generationId = await saveGeneration({
+      prompt,
+      genre,
+      mode: "generate",
+      outputLength: 0,
+      tokenCount: null,
       model: GENERATE_MODEL,
-      max_tokens: MAX_GENERATE_TOKENS,
+      success: null,
+      visualTheme,
+    }).catch(() => null);
+
+    // A full game can take a minute. Stream the raw HTML to the client as it's
+    // written so the build feels live instead of a long blank wait. When the
+    // stream finishes, grow the lessons DB from what we just made (best-effort).
+    return streamGameHtml({
+      anthropic,
       system: systemPrompt,
-      messages: [{ role: "user", content: prompt }],
-    });
-
-    let cancelled = false;
-    const readable = new ReadableStream({
-      async start(controller) {
-        try {
-          for await (const event of llmStream) {
-            if (cancelled) break;
-            if (
-              event.type === "content_block_delta" &&
-              event.delta?.type === "text_delta" &&
-              event.delta.text
-            ) {
-              controller.enqueue(encoder.encode(event.delta.text));
-            }
-          }
-          if (!cancelled) controller.close();
-        } catch (err) {
-          if (!cancelled) {
-            console.error("STREAM ERROR:", err?.message || String(err));
-            try {
-              controller.error(err);
-            } catch {
-              /* controller already torn down */
-            }
-          }
-        }
-      },
-      cancel() {
-        // Client disconnected (navigated away / aborted) — stop the LLM call.
-        cancelled = true;
-        try {
-          llmStream.abort();
-        } catch {
-          /* already finished */
-        }
-      },
-    });
-
-    return new Response(readable, {
-      headers: {
-        "Content-Type": "text/plain; charset=utf-8",
-        "Cache-Control": "no-store, no-transform",
-        "X-Accel-Buffering": "no",
+      userContent: prompt,
+      headers: generationId ? { "X-Generation-Id": generationId } : undefined,
+      onComplete: (text, success) => {
+        if (!success || !text.trim()) return;
+        extractAndSaveLesson({
+          prompt,
+          genre,
+          visualTheme,
+          success: true,
+          generationId,
+        }).catch(() => {});
       },
     });
   } catch (error) {
@@ -345,4 +360,121 @@ export async function POST(request) {
       { status: 500 }
     );
   }
+}
+
+// Edit mode: take the current game + a change request and stream back the full
+// updated file. This is the in-workspace "ask for a change" iteration loop.
+async function handleEdit(body) {
+  const apiKey = process.env.ANTHROPIC_API_KEY;
+  if (!apiKey) {
+    return Response.json(
+      {
+        error:
+          "ANTHROPIC_API_KEY is not set. Add it to .env.local and restart the dev server.",
+      },
+      { status: 500 }
+    );
+  }
+
+  let html = typeof body?.html === "string" ? body.html : "";
+  let instruction =
+    typeof body?.instruction === "string" ? body.instruction.trim() : "";
+
+  if (!html.trim() || !instruction) {
+    return Response.json(
+      { error: "Nothing to change yet — build a game first." },
+      { status: 400 }
+    );
+  }
+
+  if (html.length > MAX_EDIT_HTML_LENGTH) html = html.slice(0, MAX_EDIT_HTML_LENGTH);
+  if (instruction.length > MAX_EDIT_INSTRUCTION_LENGTH) {
+    instruction = instruction.slice(0, MAX_EDIT_INSTRUCTION_LENGTH);
+  }
+
+  const anthropic = new Anthropic({ apiKey });
+  const userContent = `Here is the current game's full HTML:\n\n${html}\n\n---\n\nChange request: ${instruction}\n\nReturn the full updated HTML file with that change applied.`;
+
+  return streamGameHtml({
+    anthropic,
+    system: EDIT_SYSTEM_PROMPT,
+    userContent,
+  });
+}
+
+// Shared streamer for generate + edit: streams the model's raw HTML to the
+// client token-by-token, aborts the LLM call if the client disconnects, and
+// fires onComplete(fullText, success) once the stream settles.
+function streamGameHtml({ anthropic, system, userContent, onComplete, headers }) {
+  const encoder = new TextEncoder();
+  const llmStream = anthropic.messages.stream({
+    model: GENERATE_MODEL,
+    max_tokens: MAX_GENERATE_TOKENS,
+    system,
+    messages: [{ role: "user", content: userContent }],
+  });
+
+  let cancelled = false;
+  let acc = "";
+  const readable = new ReadableStream({
+    async start(controller) {
+      try {
+        for await (const event of llmStream) {
+          if (cancelled) break;
+          if (
+            event.type === "content_block_delta" &&
+            event.delta?.type === "text_delta" &&
+            event.delta.text
+          ) {
+            acc += event.delta.text;
+            controller.enqueue(encoder.encode(event.delta.text));
+          }
+        }
+        if (!cancelled) {
+          controller.close();
+          if (onComplete) {
+            try {
+              onComplete(acc, true);
+            } catch {
+              /* best-effort */
+            }
+          }
+        }
+      } catch (err) {
+        if (!cancelled) {
+          console.error("STREAM ERROR:", err?.message || String(err));
+          if (onComplete) {
+            try {
+              onComplete(acc, false);
+            } catch {
+              /* best-effort */
+            }
+          }
+          try {
+            controller.error(err);
+          } catch {
+            /* controller already torn down */
+          }
+        }
+      }
+    },
+    cancel() {
+      // Client disconnected (navigated away / aborted) — stop the LLM call.
+      cancelled = true;
+      try {
+        llmStream.abort();
+      } catch {
+        /* already finished */
+      }
+    },
+  });
+
+  return new Response(readable, {
+    headers: {
+      "Content-Type": "text/plain; charset=utf-8",
+      "Cache-Control": "no-store, no-transform",
+      "X-Accel-Buffering": "no",
+      ...(headers || {}),
+    },
+  });
 }

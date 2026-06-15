@@ -6,7 +6,7 @@ export const runtime = "nodejs";
 
 async function loadGame(id) {
   const supabase = await createClient();
-  if (!supabase) return { game: null, scores: [] };
+  if (!supabase) return null;
   try {
     const { data: game } = await supabase
       .from("games")
@@ -14,24 +14,15 @@ async function loadGame(id) {
       .eq("id", id)
       .eq("visibility", "public")
       .single();
-    if (!game) return { game: null, scores: [] };
-
-    const { data: scores } = await supabase
-      .from("scores")
-      .select("name,score")
-      .eq("game_id", id)
-      .order("score", { ascending: false })
-      .limit(10);
-
-    return { game, scores: scores || [] };
+    return game || null;
   } catch {
-    return { game: null, scores: [] };
+    return null;
   }
 }
 
 export async function generateMetadata({ params }) {
   const { id } = await params;
-  const { game } = await loadGame(id);
+  const game = await loadGame(id);
   return {
     title: game ? `${game.title} — Gamecraft` : "Game not found — Gamecraft",
     description: game
@@ -42,7 +33,7 @@ export async function generateMetadata({ params }) {
 
 export default async function PublicGame({ params }) {
   const { id } = await params;
-  const { game, scores } = await loadGame(id);
+  const game = await loadGame(id);
 
   if (!game) {
     return (
@@ -57,5 +48,5 @@ export default async function PublicGame({ params }) {
     );
   }
 
-  return <GamePlayer game={game} initialScores={scores} />;
+  return <GamePlayer game={game} />;
 }
