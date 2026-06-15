@@ -1,31 +1,39 @@
 import Link from "next/link";
 import { createClient } from "../../../lib/supabase/server";
-import { wrapPreviewHtml } from "../../../lib/preview";
+import GamePlayer from "./GamePlayer";
 
 export const runtime = "nodejs";
 
 async function loadGame(id) {
   const supabase = await createClient();
-  if (!supabase) return null;
+  if (!supabase) return { game: null, scores: [] };
   try {
-    const { data } = await supabase
+    const { data: game } = await supabase
       .from("games")
-      .select("id,title,html,visibility")
+      .select("id,title,html,visibility,plays")
       .eq("id", id)
       .eq("visibility", "public")
       .single();
-    return data || null;
+    if (!game) return { game: null, scores: [] };
+
+    const { data: scores } = await supabase
+      .from("scores")
+      .select("name,score")
+      .eq("game_id", id)
+      .order("score", { ascending: false })
+      .limit(10);
+
+    return { game, scores: scores || [] };
   } catch {
-    return null;
+    return { game: null, scores: [] };
   }
 }
 
 export async function generateMetadata({ params }) {
   const { id } = await params;
-  const game = await loadGame(id);
-  const title = game ? `${game.title} — Gamecraft` : "Game not found — Gamecraft";
+  const { game } = await loadGame(id);
   return {
-    title,
+    title: game ? `${game.title} — Gamecraft` : "Game not found — Gamecraft",
     description: game
       ? `Play ${game.title}, a game built with Gamecraft. Build your own in seconds.`
       : "This game isn't available.",
@@ -34,7 +42,7 @@ export async function generateMetadata({ params }) {
 
 export default async function PublicGame({ params }) {
   const { id } = await params;
-  const game = await loadGame(id);
+  const { game, scores } = await loadGame(id);
 
   if (!game) {
     return (
@@ -49,21 +57,5 @@ export default async function PublicGame({ params }) {
     );
   }
 
-  return (
-    <div className="pub-game">
-      <div className="pub-stage">
-        <iframe
-          title={game.title}
-          srcDoc={wrapPreviewHtml(game.html)}
-          sandbox="allow-scripts"
-        />
-      </div>
-      <footer className="pub-foot">
-        <span className="pub-title">{game.title}</span>
-        <Link className="pub-cta" href="/">
-          Made with <strong>Gamecraft</strong> — build your own →
-        </Link>
-      </footer>
-    </div>
-  );
+  return <GamePlayer game={game} initialScores={scores} />;
 }

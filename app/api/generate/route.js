@@ -103,6 +103,9 @@ Place ALL game logic inside functions called AFTER the button is clicked. Never 
 GAME REQUIREMENTS:
 Title screen with game name and a single clearly-labeled Start/Play button (id="startBtn"). Controls shown on screen at all times during play. Score or progress visible if game type supports it. Win or lose condition. Restart button after game over. Fun for at least 2 minutes. Difficulty increases over time for arcade games. On-screen touch buttons for mobile on any game using arrow keys or WASD. Keep output under 450 lines total.
 
+LEADERBOARD (optional, only if the game has a numeric score):
+At game over, call window.gamecraft && window.gamecraft.submitScore(finalScore) exactly once with the player's final integer score. It is always safe to call (a no-op if undefined). Do not build your own leaderboard UI — the platform handles display.
+
 GAME FEEL:
 Every player action needs immediate feedback. Hit an enemy: flash red. Collect item: particle burst. Score point: counter animates. Game over: overlay with score and restart. Win: celebration particles. Controls must feel instant with zero lag.
 
