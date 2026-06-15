@@ -3079,3 +3079,91 @@ a {
 }
 
 /* end command palette */
+
+/* ===========================================================================
+   Publish: workspace publish action + public /g/[id] game page
+   =========================================================================== */
+
+.ws-share-item-primary {
+  background: var(--grad-soft);
+}
+.ws-share-item-primary:hover {
+  background: var(--grad);
+}
+.ws-share-item-primary:hover strong,
+.ws-share-item-primary:hover small,
+.ws-share-item-primary:hover svg {
+  color: #fff;
+}
+
+.pub-game {
+  position: fixed;
+  inset: 0;
+  display: flex;
+  flex-direction: column;
+  background:
+    radial-gradient(80% 60% at 50% 0%, rgba(179, 98, 255, 0.08), transparent 60%),
+    var(--bg);
+}
+.pub-stage {
+  flex: 1;
+  min-height: 0;
+  padding: 18px;
+}
+.pub-stage iframe {
+  width: 100%;
+  height: 100%;
+  border: 1px solid var(--border);
+  border-radius: 16px;
+  background: #000;
+  display: block;
+  box-shadow: var(--shadow);
+}
+.pub-foot {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16px;
+  padding: 12px 22px;
+  border-top: 1px solid var(--border);
+}
+.pub-title {
+  font-size: 14.5px;
+  font-weight: 600;
+  color: var(--text);
+}
+.pub-cta {
+  font-size: 13.5px;
+  color: var(--muted);
+  transition: color 0.15s ease;
+}
+.pub-cta:hover {
+  color: var(--text);
+}
+.pub-cta strong {
+  color: var(--text);
+  font-weight: 600;
+}
+
+.pub-missing {
+  position: fixed;
+  inset: 0;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 10px;
+  text-align: center;
+  padding: 24px;
+  color: var(--muted);
+  background: var(--bg);
+}
+.pub-missing h1 {
+  font-size: 24px;
+  font-weight: 600;
+  color: var(--text);
+  margin: 8px 0 0;
+}
+.pub-missing p {
+  margin: 0 0 12px;
+}

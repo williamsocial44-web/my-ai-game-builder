@@ -4,6 +4,8 @@ import { useEffect, useMemo, useRef, useState } from "react";
 import { useAuth } from "./providers";
 import AuthModal from "./auth-modal";
 import Dashboard from "./dashboard";
+import { wrapPreviewHtml } from "../lib/preview";
+import { listGames, createGame, publishGame } from "../lib/games";
 
 /* --------------------------------------------------------------- content --- */
 
@@ -257,6 +259,7 @@ function Workspace({
   onBack,
   onRebuild,
   onDownload,
+  onPublish,
   onNotify,
   error,
 }) {
@@ -414,6 +417,17 @@ function Workspace({
               </button>
               {shareOpen && (
                 <div className="ws-share-menu" onClick={(e) => e.stopPropagation()}>
+                  <button
+                    type="button"
+                    className="ws-share-item ws-share-item-primary"
+                    onClick={() => { setShareOpen(false); onPublish?.(); }}
+                  >
+                    <Icon name="globe" />
+                    <span>
+                      <strong>Publish &amp; copy link</strong>
+                      <small>Put it online at a public URL</small>
+                    </span>
+                  </button>
                   <button type="button" className="ws-share-item" onClick={copyEmbed}>
                     <Icon name="code" />
                     <span>
@@ -517,36 +531,6 @@ function sceneFromPrompt(prompt) {
   return "neon";
 }
 
-function wrapPreviewHtml(html) {
-  if (!html || typeof html !== "string") return html;
-  const fallbackScript = `
-  <script>
-  (function () {
-    function findStartButton() {
-      return document.getElementById('startBtn')
-        || Array.from(document.querySelectorAll('button')).find((b) => /start|play/i.test(b.textContent || ''))
-        || null;
-    }
-    function wire() {
-      var b = findStartButton();
-      if (!b) return;
-      function go(e){ e.preventDefault(); e.stopPropagation();
-        if (typeof window.startGame === 'function') return window.startGame();
-        if (typeof window.__gamecraftStart === 'function') return window.__gamecraftStart();
-      }
-      b.addEventListener('click', go, false);
-      b.onclick = go;
-    }
-    if (document.readyState === 'loading') {
-      document.addEventListener('DOMContentLoaded', wire, { once: true });
-    } else { setTimeout(wire, 0); }
-  })();
-  </script>`;
-  return html.trim().endsWith("</body>")
-    ? html.replace(/<\/body>/i, `${fallbackScript}</body>`)
-    : `${html}\n${fallbackScript}`;
-}
-
 /* ------------------------------------------------------------------ page --- */
 
 export default function Home() {
@@ -565,18 +549,45 @@ export default function Home() {
   const [authMode, setAuthMode] = useState("login");
   const { user, loading: authLoading, signOut } = useAuth();
   const [projects, setProjects] = useState([]);
+  const [activeGameId, setActiveGameId] = useState(null);
 
-  // load saved projects from this browser
+  // Logged out: load games from this browser. Logged in: load from the cloud.
   useEffect(() => {
+    if (user) return; // the cloud effect below owns the logged-in case
     try {
       const raw = window.localStorage.getItem("gamecraft.projects");
       if (raw) setProjects(JSON.parse(raw));
     } catch {
       /* ignore corrupt storage */
     }
-  }, []);
+  }, [user]);
 
-  function saveProject(project) {
+  useEffect(() => {
+    if (!user) return;
+    let active = true;
+    listGames().then((rows) => {
+      if (active && Array.isArray(rows)) setProjects(rows);
+    });
+    return () => {
+      active = false;
+    };
+  }, [user]);
+
+  // Save a freshly built game: to the cloud when signed in, else to localStorage.
+  // Returns the id it was stored under (used for publishing).
+  async function saveProject(project) {
+    if (user) {
+      const saved = await createGame({
+        title: project.title,
+        prompt: project.prompt,
+        scene: project.scene,
+        html: project.html,
+      });
+      if (saved) {
+        setProjects((prev) => [saved, ...prev].slice(0, 100));
+        return saved.id;
+      }
+    }
     setProjects((prev) => {
       const next = [project, ...prev].slice(0, 60);
       try {
@@ -586,6 +597,7 @@ export default function Home() {
       }
       return next;
     });
+    return project.id;
   }
 
   const [wordIndex, setWordIndex] = useState(0);
@@ -651,6 +663,7 @@ export default function Home() {
     setStreamCode("");
     setPlan("");
     setError("");
+    setActiveGameId(null);
     setLoading(true);
     runStepAnimation();
 
@@ -695,7 +708,7 @@ export default function Home() {
       setHtml(finalHtml);
       setPercent(100);
       setStepIndex(BUILD_STEPS.length);
-      saveProject({
+      const savedId = await saveProject({
         id: crypto?.randomUUID?.() || String(Date.now()),
         title: deriveTitle(requestPrompt),
         prompt: requestPrompt,
@@ -703,6 +716,7 @@ export default function Home() {
         scene: sceneFromPrompt(requestPrompt),
         createdAt: Date.now(),
       });
+      setActiveGameId(savedId || null);
     } catch (err) {
       setError(err.message || "Something went wrong.");
     } finally {
@@ -745,9 +759,37 @@ export default function Home() {
   function openProject(project) {
     setHtml(project.html);
     setActivePrompt(project.prompt);
+    setActiveGameId(typeof project.id === "string" ? project.id : null);
     setPlan("");
     setError("");
     setView("workspace");
+  }
+
+  // Publish the open game to a public URL and copy the link.
+  async function publishActive() {
+    if (!user) {
+      setToast("Sign in to publish your game");
+      return;
+    }
+    if (!activeGameId) {
+      setToast("Give it a moment to save, then publish");
+      return;
+    }
+    const ok = await publishGame(activeGameId);
+    if (!ok) {
+      setToast("Couldn’t publish — is the games table set up?");
+      return;
+    }
+    setProjects((prev) =>
+      prev.map((p) => (p.id === activeGameId ? { ...p, visibility: "public" } : p))
+    );
+    const url = `${window.location.origin}/g/${activeGameId}`;
+    try {
+      await navigator.clipboard?.writeText(url);
+      setToast("Published! Public link copied");
+    } catch {
+      setToast(`Published at ${url}`);
+    }
   }
 
   const cycle = CYCLE_WORDS[wordIndex];
@@ -769,6 +811,7 @@ export default function Home() {
           onBack={backHome}
           onRebuild={() => generate(activePrompt)}
           onDownload={downloadGame}
+          onPublish={publishActive}
           onNotify={setToast}
           error={error}
         />

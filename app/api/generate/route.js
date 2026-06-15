@@ -291,10 +291,12 @@ export async function POST(request) {
       messages: [{ role: "user", content: prompt }],
     });
 
+    let cancelled = false;
     const readable = new ReadableStream({
       async start(controller) {
         try {
           for await (const event of llmStream) {
+            if (cancelled) break;
             if (
               event.type === "content_block_delta" &&
               event.delta?.type === "text_delta" &&
@@ -303,10 +305,25 @@ export async function POST(request) {
               controller.enqueue(encoder.encode(event.delta.text));
             }
           }
-          controller.close();
+          if (!cancelled) controller.close();
         } catch (err) {
-          console.error("STREAM ERROR:", err?.message || String(err));
-          controller.error(err);
+          if (!cancelled) {
+            console.error("STREAM ERROR:", err?.message || String(err));
+            try {
+              controller.error(err);
+            } catch {
+              /* controller already torn down */
+            }
+          }
+        }
+      },
+      cancel() {
+        // Client disconnected (navigated away / aborted) — stop the LLM call.
+        cancelled = true;
+        try {
+          llmStream.abort();
+        } catch {
+          /* already finished */
         }
       },
     });
