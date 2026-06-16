@@ -413,6 +413,7 @@ export async function POST(request) {
     // loads an image at runtime (games must stay self-contained).
     let userContent = prompt;
     if (conceptImages.length) {
+      const hasVisionShot = conceptImages.some((img) => /player/i.test(img.caption));
       const blocks = [];
       conceptImages.forEach((img, i) => {
         blocks.push({ type: "text", text: `Concept image ${i + 1} — ${img.caption}:` });
@@ -423,7 +424,19 @@ export async function POST(request) {
       });
       blocks.push({
         type: "text",
-        text: `${prompt}\n\nThe ${conceptImages.length} image(s) above are AI-generated concept art of the intended look — use them as ART DIRECTION: match the palette, mood, composition, and the style of the characters and environment. CRITICAL: if a "what the player actually sees" shot shows limited vision and darkness, the running game MUST look like that during play — a lit vision radius/cone around the player with the rest of the map dimmed or hidden and walls blocking sight — not a fully-lit map. Recreate the feel in code; do NOT copy pixel-for-pixel and do NOT load or reference any external image — draw everything yourself.`,
+        text:
+          `${prompt}\n\n` +
+          `You have ${conceptImages.length} concept image(s) above showing the intended look of this game. ` +
+          `BUILD THE GAME TO MATCH THEM — they are your art direction, not a loose suggestion. Study them and pull out:\n` +
+          `- the COLOR PALETTE — reuse those exact dominant colors in your CSS/canvas fills, gradients and lighting;\n` +
+          `- the LAYOUT & COMPOSITION — arrange the play space the way the image does;\n` +
+          `- the CHARACTER & OBJECT DESIGN — recreate those shapes/silhouettes as canvas drawings (layered shapes with highlights and shadows), never flat placeholder blobs;\n` +
+          `- the LIGHTING & MOOD — match the atmosphere, shadows, and overall feel.\n` +
+          `The finished, playable game should look like it came straight out of this concept art.\n` +
+          (hasVisionShot
+            ? `One image shows what the player ACTUALLY sees in play — limited vision with the rest in darkness. The running game MUST look like that during play: a lit vision radius/cone around the player, the rest of the map dimmed or hidden, walls blocking sight, a subtle vignette. Do NOT render a fully-lit map.\n`
+            : "") +
+          `Recreate everything in code — do NOT copy pixel-for-pixel and do NOT load or reference any external image; the game must stay a single self-contained file that draws everything itself.`,
       });
       userContent = blocks;
     }
