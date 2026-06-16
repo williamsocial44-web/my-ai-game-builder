@@ -12,12 +12,11 @@ import {
   buildGameBlueprint,
   CORE_GAME_KNOWLEDGE,
 } from "../../../lib/game-knowledge";
-import { retrieveGameContext } from "../../../lib/catalog/retrieve";
 import { POPULARITY_DNA } from "../../../lib/popularity-dna";
 
 export const runtime = "nodejs";
 
-const MAX_GENERATE_TOKENS = 12000;
+const MAX_GENERATE_TOKENS = 16000;
 const MAX_PLAN_TOKENS = 140;
 const MAX_PROMPT_LENGTH = 300;
 const MAX_EDIT_INSTRUCTION_LENGTH = 300;
@@ -111,6 +110,16 @@ Title screen with game name and a single clearly-labeled Start/Play button (id="
 GAME FEEL:
 Every player action needs immediate feedback. Hit an enemy: flash red. Collect item: particle burst. Score point: counter animates. Game over: overlay with score and restart. Win: celebration particles. Controls must feel instant with zero lag.
 
+FINAL SELF-CHECK — before you output, silently verify every item is TRUE and fix anything that is not:
+- The Start button uses id="startBtn" and a startGame() function — clicking it actually begins play.
+- There is a clear win OR lose state and a working Restart after game over.
+- Something animates within the first second and the player can act within 3 seconds.
+- Every player action has instant visual feedback (flash / particle / shake / score pop) AND a sound.
+- Difficulty ramps over time and the game stays genuinely fun for at least 2 minutes.
+- It adapts to any window size and is playable on touch (on-screen controls if it uses keys).
+- No external requests, no undefined variables, no unclosed tags — the single file runs standalone with zero console errors.
+Ship a finished, polished game — never a tech demo or a stub.
+
 LESSONS FROM PREVIOUS GENERATIONS — apply every one of these:
 [LESSONS_PLACEHOLDER]
 
@@ -193,15 +202,13 @@ function stripFences(text) {
   return t.trim();
 }
 
-function buildGenerateSystemPrompt(lessonsContext, visualTheme, blueprint, catalogContext) {
+function buildGenerateSystemPrompt(lessonsContext, visualTheme, blueprint) {
   const themeDescription =
     VISUAL_THEME_DESCRIPTIONS[visualTheme] ||
     VISUAL_THEME_DESCRIPTIONS.neon;
 
-  const blueprintBlock = catalogContext
-    ? `${blueprint}\n\n${catalogContext}`
-    : blueprint;
-
+  // Note: the blueprint already embeds the catalog reference games
+  // (buildGameBlueprint → retrieveGameContext), so it is NOT injected again here.
   return (
     FORGE_PREAMBLE +
     GENERATE_SYSTEM_PROMPT.replace(
@@ -209,7 +216,7 @@ function buildGenerateSystemPrompt(lessonsContext, visualTheme, blueprint, catal
       lessonsContext || "(No lessons yet — make strong creative choices.)"
     )
       .replace("[VISUAL_THEME_PLACEHOLDER]", themeDescription)
-      .replace("[BLUEPRINT_PLACEHOLDER]", blueprintBlock) +
+      .replace("[BLUEPRINT_PLACEHOLDER]", blueprint) +
     "\n\n" +
     POPULARITY_DNA
   );
@@ -277,26 +284,6 @@ export async function POST(request) {
       return Response.json({ html });
     }
 
-    const genre = detectGenre(prompt);
-    const visualTheme = detectVisualTheme(prompt);
-    const catalogContext = (() => {
-      try {
-        return retrieveGameContext(prompt);
-      } catch {
-        return "";
-      }
-    })();
-    const [lessonsContext, blueprint] = await Promise.all([
-      buildLessonsContext().catch(() => ""),
-      buildGameBlueprint(prompt),
-    ]);
-    const systemPrompt = buildGenerateSystemPrompt(
-      lessonsContext,
-      visualTheme,
-      blueprint,
-      catalogContext
-    );
-
     const apiKey = process.env.ANTHROPIC_API_KEY;
     if (!apiKey) {
       return Response.json(
@@ -308,11 +295,11 @@ export async function POST(request) {
       );
     }
 
-    const isPlan = mode === "plan";
     const anthropic = new Anthropic({ apiKey });
 
     // The concept blurb is short — keep it as a single fast JSON response.
-    if (isPlan) {
+    // (Plan returns here, before any of the generate-only knowledge work below.)
+    if (mode === "plan") {
       const message = await anthropic.messages.create({
         model: PLAN_MODEL,
         max_tokens: MAX_PLAN_TOKENS,
@@ -325,6 +312,20 @@ export async function POST(request) {
         .join("");
       return Response.json({ plan: text.trim() });
     }
+
+    // Generate-only: assemble the genre, theme, lessons, and blueprint. None of
+    // this runs for plan requests, so the concept blurb stays fast.
+    const genre = detectGenre(prompt);
+    const visualTheme = detectVisualTheme(prompt);
+    const [lessonsContext, blueprint] = await Promise.all([
+      buildLessonsContext(prompt).catch(() => ""),
+      buildGameBlueprint(prompt),
+    ]);
+    const systemPrompt = buildGenerateSystemPrompt(
+      lessonsContext,
+      visualTheme,
+      blueprint
+    );
 
     // Log the generation up-front so its id can ride back on a header — the
     // client attaches the player's rating to it later (see /api/feedback).
