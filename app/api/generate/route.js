@@ -11,27 +11,71 @@ import {
 import {
   buildGameBlueprint,
   CORE_GAME_KNOWLEDGE,
+  assessComplexity,
 } from "../../../lib/game-knowledge";
 import { POPULARITY_DNA } from "../../../lib/popularity-dna";
 
 export const runtime = "nodejs";
 
-// Generation runs on the most capable model with adaptive thinking + high
-// effort — building a complete, polished game is a hard coding+design task, so
-// max intelligence matters more than latency. Thinking tokens share the output
-// budget, so max_tokens is generous (streamed, so no HTTP timeout). All three
-// are env-overridable if you want to trade intelligence for speed/cost:
-//   GENERATE_MODEL=claude-sonnet-4-6  GENERATE_EFFORT=medium
+// Generation auto-routes by how hard the request is (see pickGenerationConfig):
+// simple classics → the fast model with no thinking; ambitious/multi-system
+// games → the most capable model with adaptive thinking. Thinking tokens share
+// the output budget, so max_tokens is generous (streamed, so no HTTP timeout).
+// Set GENERATE_MODEL / GENERATE_EFFORT to force one config and skip routing.
 const MAX_GENERATE_TOKENS = 64000;
 const MAX_PLAN_TOKENS = 140;
 const MAX_PROMPT_LENGTH = 300;
 const MAX_EDIT_INSTRUCTION_LENGTH = 300;
 const MAX_EDIT_HTML_LENGTH = 60000;
 const MAX_REQUESTS_PER_HOUR = 30;
-const GENERATE_MODEL = process.env.GENERATE_MODEL || "claude-opus-4-8";
-const GENERATE_EFFORT = process.env.GENERATE_EFFORT || "high"; // low|medium|high|xhigh|max
+
+const SMART_MODEL = "claude-opus-4-8"; // most capable — complex builds
+const FAST_MODEL = "claude-sonnet-4-6"; // fast + cheap — simple builds
+const FORCED_MODEL = process.env.GENERATE_MODEL || null; // set to pin one model
+const FORCED_EFFORT = process.env.GENERATE_EFFORT || null; // low|medium|high|xhigh|max
 const PLAN_MODEL = process.env.PLAN_MODEL || "claude-haiku-4-5-20251001";
 const MOCK_MODE = false;
+
+// Map a complexity score to a model + effort + whether to think first.
+// score >= 4 → very complex; >= 2 → complex; otherwise simple/standard.
+function configForScore(score) {
+  if (FORCED_MODEL) {
+    return { model: FORCED_MODEL, effort: FORCED_EFFORT || "high", think: true, tier: "forced" };
+  }
+  if (score >= 4) return { model: SMART_MODEL, effort: "xhigh", think: true, tier: "very-complex" };
+  if (score >= 2) return { model: SMART_MODEL, effort: "high", think: true, tier: "complex" };
+  return { model: FAST_MODEL, effort: "medium", think: false, tier: "simple" };
+}
+
+// An explicit quality choice from the client ("fast" / "smart") overrides the
+// auto-router; "auto" (or anything else) routes by complexity.
+function configForQuality(quality) {
+  if (FORCED_MODEL) {
+    return { model: FORCED_MODEL, effort: FORCED_EFFORT || "high", think: true, tier: "forced" };
+  }
+  if (quality === "fast") {
+    return { model: FAST_MODEL, effort: "medium", think: false, tier: "fast" };
+  }
+  if (quality === "smart") {
+    return { model: SMART_MODEL, effort: "high", think: true, tier: "smart" };
+  }
+  return null; // auto — caller falls through to score-based routing
+}
+
+// New build: explicit choice wins, else route on the prompt's complexity.
+function pickGenerationConfig(prompt, quality) {
+  return configForQuality(quality) || configForScore(assessComplexity(prompt).score);
+}
+
+// Edit: explicit choice wins, else route on the change request — but a big
+// existing file is itself hard to rewrite correctly, so bump those up.
+function pickEditConfig(instruction, htmlLength, quality) {
+  const forced = configForQuality(quality);
+  if (forced) return forced;
+  const { score } = assessComplexity(instruction);
+  const bumped = htmlLength > 9000 ? Math.max(score, 2) : score;
+  return configForScore(bumped);
+}
 
 const rateLimitMap = new Map();
 
@@ -334,6 +378,11 @@ export async function POST(request) {
       blueprint
     );
 
+    // Pick the model + reasoning depth: explicit client choice, else auto from
+    // the prompt's complexity.
+    const cfg = pickGenerationConfig(prompt, body?.quality);
+    console.log(`GENERATE routing: tier=${cfg.tier} model=${cfg.model} effort=${cfg.effort}`);
+
     // Log the generation up-front so its id can ride back on a header — the
     // client attaches the player's rating to it later (see /api/feedback).
     const generationId = await saveGeneration({
@@ -342,7 +391,7 @@ export async function POST(request) {
       mode: "generate",
       outputLength: 0,
       tokenCount: null,
-      model: GENERATE_MODEL,
+      model: cfg.model,
       success: null,
       visualTheme,
     }).catch(() => null);
@@ -354,6 +403,9 @@ export async function POST(request) {
       anthropic,
       system: systemPrompt,
       userContent: prompt,
+      model: cfg.model,
+      effort: cfg.effort,
+      think: cfg.think,
       headers: generationId ? { "X-Generation-Id": generationId } : undefined,
       onComplete: (text, success) => {
         if (!success || !text.trim()) return;
@@ -413,6 +465,9 @@ async function handleEdit(body, ip) {
     instruction = instruction.slice(0, MAX_EDIT_INSTRUCTION_LENGTH);
   }
 
+  const cfg = pickEditConfig(instruction, html.length, body?.quality);
+  console.log(`EDIT routing: tier=${cfg.tier} model=${cfg.model} effort=${cfg.effort}`);
+
   const anthropic = new Anthropic({ apiKey });
   const userContent = `Here is the current game's full HTML:\n\n${html}\n\n---\n\nChange request: ${instruction}\n\nReturn the full updated HTML file with that change applied.`;
 
@@ -420,23 +475,27 @@ async function handleEdit(body, ip) {
     anthropic,
     system: EDIT_SYSTEM_PROMPT,
     userContent,
+    model: cfg.model,
+    effort: cfg.effort,
+    think: cfg.think,
   });
 }
 
 // Shared streamer for generate + edit: streams the model's raw HTML to the
 // client token-by-token, aborts the LLM call if the client disconnects, and
-// fires onComplete(fullText, success) once the stream settles.
-function streamGameHtml({ anthropic, system, userContent, onComplete, headers }) {
+// fires onComplete(fullText, success) once the stream settles. The model,
+// effort, and whether to think first are chosen per-request by the router.
+function streamGameHtml({ anthropic, system, userContent, model, effort, think, onComplete, headers }) {
   const encoder = new TextEncoder();
   const llmStream = anthropic.messages.stream({
-    model: GENERATE_MODEL,
+    model: model || SMART_MODEL,
     max_tokens: MAX_GENERATE_TOKENS,
     system,
     // Adaptive thinking lets the model plan the architecture and game design
     // before writing code; effort tunes how deeply. Thinking blocks stream with
     // empty content (we don't surface them) — only the HTML text is captured.
-    thinking: { type: "adaptive" },
-    output_config: { effort: GENERATE_EFFORT },
+    thinking: think ? { type: "adaptive" } : { type: "disabled" },
+    output_config: { effort: effort || "high" },
     messages: [{ role: "user", content: userContent }],
   });
 

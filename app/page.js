@@ -6,6 +6,7 @@ import AuthModal from "./auth-modal";
 import Dashboard from "./dashboard";
 import { wrapPreviewHtml } from "../lib/preview";
 import { listGames, createGame, publishGame, updateGameHtml, listPublicGames } from "../lib/games";
+import { QUALITY_OPTIONS } from "../lib/quality";
 
 /* --------------------------------------------------------------- content --- */
 
@@ -109,6 +110,8 @@ function Icon({ name, className }) {
     external: <><path d="M14 5h5v5" /><path d="M19 5 11 13" /><path d="M19 13v6H5V5h6" /></>,
     code: <path d="m9 8-5 4 5 4m6-8 5 4-5 4" />,
     copy: <><rect x="9" y="9" width="11" height="11" rx="2" /><path d="M5 15V5a2 2 0 0 1 2-2h8" /></>,
+    brain: <><path d="M9 3a3 3 0 0 0-3 3 3 3 0 0 0-1 5.8V15a3 3 0 0 0 4 2.8" /><path d="M9 3a2.5 2.5 0 0 1 3 2.4v12.2A2.5 2.5 0 0 1 9 20" /><path d="M15 3a3 3 0 0 1 3 3 3 3 0 0 1 1 5.8V15a3 3 0 0 1-4 2.8" /></>,
+    gauge: <><path d="M12 14a2 2 0 1 0 0-.01" /><path d="m14 12 3-3" /><path d="M4 18a8 8 0 1 1 16 0" /></>,
   };
   return <svg {...p}>{shapes[name] || shapes.spark}</svg>;
 }
@@ -172,7 +175,54 @@ function UserMenu({ user, onSignOut }) {
 
 /* ------------------------------------------------------------- composer --- */
 
-function Composer({ value, onChange, onSubmit, loading, placeholder, compact }) {
+function QualitySelect({ quality, setQuality }) {
+  const [open, setOpen] = useState(false);
+  const current = QUALITY_OPTIONS.find((o) => o.id === quality) || QUALITY_OPTIONS[0];
+
+  useEffect(() => {
+    if (!open) return;
+    const close = (e) => { if (!e.target.closest(".qsel")) setOpen(false); };
+    window.addEventListener("click", close);
+    return () => window.removeEventListener("click", close);
+  }, [open]);
+
+  return (
+    <div className="qsel">
+      <button
+        type="button"
+        className="icon-pill qsel-btn"
+        onClick={(e) => { e.stopPropagation(); setOpen((o) => !o); }}
+        title="Choose build quality"
+      >
+        <Icon name={current.icon} />
+        {current.label}
+        <Icon name="chevron" />
+      </button>
+      {open && (
+        <div className="qsel-menu" onClick={(e) => e.stopPropagation()}>
+          <div className="qsel-head">Build quality</div>
+          {QUALITY_OPTIONS.map((o) => (
+            <button
+              key={o.id}
+              type="button"
+              className={`qsel-item ${o.id === quality ? "is-active" : ""}`}
+              onClick={() => { setQuality(o.id); setOpen(false); }}
+            >
+              <span className="qsel-item-ico"><Icon name={o.icon} /></span>
+              <span className="qsel-item-text">
+                <strong>{o.label} <small>· {o.short}</small></strong>
+                <small>{o.desc}</small>
+              </span>
+              {o.id === quality && <Icon name="check" className="qsel-item-check" />}
+            </button>
+          ))}
+        </div>
+      )}
+    </div>
+  );
+}
+
+function Composer({ value, onChange, onSubmit, loading, placeholder, compact, quality, setQuality }) {
   const ref = useRef(null);
   const [focus, setFocus] = useState(false);
 
@@ -207,6 +257,7 @@ function Composer({ value, onChange, onSubmit, loading, placeholder, compact }) 
           <button type="button" className="icon-pill" title="Attach a reference (coming soon)">
             <Icon name="attach" />
           </button>
+          {setQuality && <QualitySelect quality={quality} setQuality={setQuality} />}
           {!compact && (
             <button type="button" className="icon-pill" title="Visibility">
               <Icon name="globe" />
@@ -293,6 +344,8 @@ function Workspace({
   error,
   feedback,
   onFeedback,
+  quality,
+  setQuality,
 }) {
   const feedRef = useRef(null);
   const codeRef = useRef(null);
@@ -438,6 +491,8 @@ function Workspace({
             loading={loading}
             placeholder="Ask for a change…"
             compact
+            quality={quality}
+            setQuality={setQuality}
           />
         </div>
       </aside>
@@ -598,6 +653,7 @@ function sceneFromPrompt(prompt) {
 export default function Home() {
   const [prompt, setPrompt] = useState("");
   const [followup, setFollowup] = useState("");
+  const [quality, setQuality] = useState("auto"); // auto | fast | smart
   const [view, setView] = useState("home"); // home | workspace
   const [html, setHtml] = useState("");
   const [streamCode, setStreamCode] = useState(""); // live HTML as it streams in
@@ -767,7 +823,7 @@ export default function Home() {
       const res = await fetch("/api/generate", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ prompt: requestPrompt, mode: "generate" }),
+        body: JSON.stringify({ prompt: requestPrompt, mode: "generate", quality }),
       });
 
       if (!res.ok || !res.body) {
@@ -842,7 +898,7 @@ export default function Home() {
       const res = await fetch("/api/generate", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ mode: "edit", html: baseHtml, instruction }),
+        body: JSON.stringify({ mode: "edit", html: baseHtml, instruction, quality }),
       });
 
       if (!res.ok || !res.body) {
@@ -1011,6 +1067,8 @@ export default function Home() {
           error={error}
           feedback={feedback}
           onFeedback={submitFeedback}
+          quality={quality}
+          setQuality={setQuality}
         />
         {toast && <div className="toast">{toast}</div>}
       </>
@@ -1023,6 +1081,8 @@ export default function Home() {
         <Dashboard
           user={user}
           projects={projects}
+          quality={quality}
+          setQuality={setQuality}
           onBuild={(p) => generate(p)}
           onOpenProject={openProject}
           onSignOut={async () => {
@@ -1118,6 +1178,8 @@ export default function Home() {
             onSubmit={() => generate()}
             loading={loading}
             placeholder="Ask Gamecraft to build a game…  e.g. a neon snake with boss rounds"
+            quality={quality}
+            setQuality={setQuality}
           />
         </div>
 

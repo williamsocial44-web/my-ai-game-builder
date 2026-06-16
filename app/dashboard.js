@@ -2,6 +2,7 @@
 
 import { useEffect, useId, useMemo, useRef, useState } from "react";
 import { listSessions } from "../lib/games";
+import { QUALITY_OPTIONS } from "../lib/quality";
 
 /* ----------------------------------------------------------------- icons --- */
 
@@ -54,6 +55,8 @@ function Icon({ name, className }) {
     download: <><path d="M12 3v12m0 0 4-4m-4 4-4-4" /><path d="M4 17v2a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2v-2" /></>,
     chart: <><path d="M4 20V4" /><path d="M4 20h16" /><rect x="7" y="12" width="3" height="5" rx="1" fill="currentColor" stroke="none" /><rect x="12" y="8" width="3" height="9" rx="1" fill="currentColor" stroke="none" /><rect x="17" y="5" width="3" height="12" rx="1" fill="currentColor" stroke="none" /></>,
     clock: <><circle cx="12" cy="12" r="9" /><path d="M12 7v5l3 2" /></>,
+    brain: <><path d="M9 3a3 3 0 0 0-3 3 3 3 0 0 0-1 5.8V15a3 3 0 0 0 4 2.8" /><path d="M9 3a2.5 2.5 0 0 1 3 2.4v12.2A2.5 2.5 0 0 1 9 20" /><path d="M15 3a3 3 0 0 1 3 3 3 3 0 0 1 1 5.8V15a3 3 0 0 1-4 2.8" /></>,
+    gauge: <><path d="M12 14a2 2 0 1 0 0-.01" /><path d="m14 12 3-3" /><path d="M4 18a8 8 0 1 1 16 0" /></>,
   };
   return <svg {...p}>{s[name] || s.grid}</svg>;
 }
@@ -518,7 +521,52 @@ const DESIGN_STYLES = [
   { label: "Minimal", note: "a clean, minimal look" },
 ];
 
-function HomeView({ user, projects, onBuild, onOpenProject, setSection, onNotify }) {
+function QualitySelect({ quality, setQuality }) {
+  const [open, setOpen] = useState(false);
+  const current = QUALITY_OPTIONS.find((o) => o.id === quality) || QUALITY_OPTIONS[0];
+
+  useEffect(() => {
+    if (!open) return;
+    const close = (e) => { if (!e.target.closest(".qsel")) setOpen(false); };
+    window.addEventListener("click", close);
+    return () => window.removeEventListener("click", close);
+  }, [open]);
+
+  return (
+    <div className="qsel qsel-right">
+      <button
+        type="button"
+        className="hp-mode-btn qsel-btn"
+        onClick={(e) => { e.stopPropagation(); setOpen((o) => !o); }}
+        title="Choose build quality"
+      >
+        <Icon name={current.icon} /> {current.label} <Icon name="chevron" />
+      </button>
+      {open && (
+        <div className="qsel-menu" onClick={(e) => e.stopPropagation()}>
+          <div className="qsel-head">Build quality</div>
+          {QUALITY_OPTIONS.map((o) => (
+            <button
+              key={o.id}
+              type="button"
+              className={`qsel-item ${o.id === quality ? "is-active" : ""}`}
+              onClick={() => { setQuality(o.id); setOpen(false); }}
+            >
+              <span className="qsel-item-ico"><Icon name={o.icon} /></span>
+              <span className="qsel-item-text">
+                <strong>{o.label} <small>· {o.short}</small></strong>
+                <small>{o.desc}</small>
+              </span>
+              {o.id === quality && <Icon name="check" className="qsel-item-check" />}
+            </button>
+          ))}
+        </div>
+      )}
+    </div>
+  );
+}
+
+function HomeView({ user, projects, onBuild, onOpenProject, setSection, onNotify, quality, setQuality }) {
   const [value, setValue] = useState("");
   const [tab, setTab] = useState("projects");
   const [mode, setMode] = useState("Build");
@@ -655,6 +703,7 @@ function HomeView({ user, projects, onBuild, onOpenProject, setSection, onNotify
               <input ref={fileRef} type="file" hidden onChange={onAttach} />
             </div>
             <div className="hp-right">
+              {setQuality && <QualitySelect quality={quality} setQuality={setQuality} />}
               <div className="hp-mode">
                 <button type="button" className="hp-mode-btn" onClick={() => setModeOpen((o) => !o)}>
                   {mode} <Icon name="chevron" />
@@ -1519,7 +1568,7 @@ const TITLES = {
   shared: "Shared with me",
 };
 
-export default function Dashboard({ user, projects, onBuild, onOpenProject, onSignOut, onNotify }) {
+export default function Dashboard({ user, projects, onBuild, onOpenProject, onSignOut, onNotify, quality, setQuality }) {
   const [section, setSection] = useState("home");
   const [paletteOpen, setPaletteOpen] = useState(false);
 
@@ -1556,7 +1605,7 @@ export default function Dashboard({ user, projects, onBuild, onOpenProject, onSi
       />
       <main className="app-main">
         {section === "home" && (
-          <HomeView user={user} projects={recents} onBuild={onBuild} onOpenProject={onOpenProject} setSection={setSection} onNotify={onNotify} />
+          <HomeView user={user} projects={recents} onBuild={onBuild} onOpenProject={onOpenProject} setSection={setSection} onNotify={onNotify} quality={quality} setQuality={setQuality} />
         )}
         {["projects", "starred", "created", "shared"].includes(section) && (
           <ProjectsView
