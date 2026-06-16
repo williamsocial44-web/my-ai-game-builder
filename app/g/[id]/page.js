@@ -23,11 +23,26 @@ async function loadGame(id) {
 export async function generateMetadata({ params }) {
   const { id } = await params;
   const game = await loadGame(id);
+  const title = game ? `${game.title} — Gamecraft` : "Game not found — Gamecraft";
+  const description = game
+    ? `Play ${game.title}, a game built with Gamecraft. Build your own playable game in seconds — no code.`
+    : "This game isn't available.";
+
   return {
-    title: game ? `${game.title} — Gamecraft` : "Game not found — Gamecraft",
-    description: game
-      ? `Play ${game.title}, a game built with Gamecraft. Build your own in seconds.`
-      : "This game isn't available.",
+    title,
+    description,
+    openGraph: {
+      title,
+      description,
+      type: "website",
+      siteName: "Gamecraft",
+      url: game ? `/g/${id}` : undefined,
+    },
+    twitter: {
+      card: "summary_large_image",
+      title,
+      description,
+    },
   };
 }
 

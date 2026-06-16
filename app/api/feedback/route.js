@@ -1,4 +1,8 @@
-import { updateGenerationFeedback } from "../../../lib/memory";
+import {
+  updateGenerationFeedback,
+  getGenerationContext,
+  extractAndSaveLesson,
+} from "../../../lib/memory";
 
 export const runtime = "nodejs";
 
@@ -38,6 +42,21 @@ export async function POST(request) {
       userFeedback: comment || null,
       notableSuccess: rating === 1 ? true : null,
     });
+
+    // A thumbs-down is a strong signal — turn it into an "avoid this" lesson so
+    // the next game of this kind comes out better. Best-effort, fire-and-forget.
+    if (rating === -1) {
+      const ctx = await getGenerationContext(id);
+      if (ctx) {
+        extractAndSaveLesson({
+          prompt: ctx.prompt,
+          genre: ctx.genre,
+          visualTheme: ctx.visualTheme,
+          success: false,
+          generationId: id,
+        }).catch(() => {});
+      }
+    }
   } catch {
     /* analytics are best-effort */
   }

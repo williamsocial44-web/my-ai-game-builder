@@ -5,7 +5,7 @@ import { useAuth } from "./providers";
 import AuthModal from "./auth-modal";
 import Dashboard from "./dashboard";
 import { wrapPreviewHtml } from "../lib/preview";
-import { listGames, createGame, publishGame, updateGameHtml } from "../lib/games";
+import { listGames, createGame, publishGame, updateGameHtml, listPublicGames } from "../lib/games";
 
 /* --------------------------------------------------------------- content --- */
 
@@ -33,6 +33,35 @@ const COMMUNITY = [
 ];
 
 const TABS = ["Popular", "Discover", "Arcade", "Puzzle"];
+
+// Which scenes each community tab surfaces (Popular/Discover show everything).
+const TAB_SCENES = {
+  Arcade: ["neon", "space", "platformer", "retro"],
+  Puzzle: ["word", "cards"],
+};
+
+function filterByTab(items, tab) {
+  const scenes = TAB_SCENES[tab];
+  if (!scenes) return items; // Popular / Discover: everything
+  const matched = items.filter((it) => scenes.includes(it.scene));
+  return matched.length ? matched : items; // never show an empty gallery
+}
+
+const SCENE_COLORS = {
+  neon: "#06d6a0",
+  space: "#5b8cff",
+  clicker: "#ffc660",
+  word: "#3ddc84",
+  cards: "#b362ff",
+  platformer: "#ff7a59",
+  fantasy: "#ffd700",
+  retro: "#ff006e",
+};
+
+function formatK(n) {
+  const v = n || 0;
+  return v >= 1000 ? (v / 1000).toFixed(1).replace(/\.0$/, "") + "k" : String(v);
+}
 
 const BUILD_STEPS = [
   "Reading your idea",
@@ -222,7 +251,7 @@ function CommunityCard({ item, onOpen, index }) {
         <Scene scene={item.scene} title={item.title} />
         <div className="play">
           <span>
-            <Icon name="play" /> Remix this game
+            <Icon name="play" /> {item.real ? "Play this game" : "Remix this game"}
           </span>
         </div>
       </div>
@@ -538,6 +567,20 @@ function deriveTitle(prompt) {
   return title || "Untitled Game";
 }
 
+// The planner returns a catchy game name on its first line — much nicer than
+// chopping words off the prompt. Use it when it looks like a real title.
+function titleFromPlan(plan) {
+  if (!plan) return null;
+  const first = (plan.split("\n").map((s) => s.trim()).filter(Boolean)[0] || "");
+  const cleaned = first
+    .replace(/^(line\s*1\s*[:.\-]?\s*|name\s*[:.\-]\s*|title\s*[:.\-]\s*)/i, "")
+    .replace(/^["'`]+|["'`.!]+$/g, "")
+    .trim();
+  const words = cleaned.split(/\s+/);
+  if (!cleaned || words.length > 5 || cleaned.length > 40) return null;
+  return cleaned;
+}
+
 function sceneFromPrompt(prompt) {
   const p = (prompt || "").toLowerCase();
   if (/space|ship|alien|meteor|galaxy|orbital|star/.test(p)) return "space";
@@ -571,6 +614,8 @@ export default function Home() {
   const [activeGameId, setActiveGameId] = useState(null);
   const [activeGenId, setActiveGenId] = useState(null); // generation row id for feedback
   const [feedback, setFeedback] = useState(null); // null | "up" | "down"
+  const [publicGames, setPublicGames] = useState([]); // real published games for the showcase
+  const planRef = useRef(""); // latest concept text, for naming the saved game
 
   // Logged out: load games from this browser. Logged in: load from the cloud.
   useEffect(() => {
@@ -593,6 +638,18 @@ export default function Home() {
       active = false;
     };
   }, [user]);
+
+  // Real published games power the community showcase (falls back to the
+  // curated demo set when none exist yet).
+  useEffect(() => {
+    let active = true;
+    listPublicGames(9).then((rows) => {
+      if (active && Array.isArray(rows) && rows.length) setPublicGames(rows);
+    });
+    return () => {
+      active = false;
+    };
+  }, []);
 
   // Save a freshly built game: to the cloud when signed in, else to localStorage.
   // Returns the id it was stored under (used for publishing).
@@ -691,13 +748,19 @@ export default function Home() {
     runStepAnimation();
 
     // kick off a quick concept in parallel for the chat panel
+    planRef.current = "";
     fetch("/api/generate", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ prompt: requestPrompt, mode: "plan" }),
     })
       .then((r) => r.json())
-      .then((d) => d?.plan && setPlan(d.plan))
+      .then((d) => {
+        if (d?.plan) {
+          setPlan(d.plan);
+          planRef.current = d.plan;
+        }
+      })
       .catch(() => {});
 
     try {
@@ -736,7 +799,7 @@ export default function Home() {
       setStepIndex(BUILD_STEPS.length);
       const savedId = await saveProject({
         id: crypto?.randomUUID?.() || String(Date.now()),
-        title: deriveTitle(requestPrompt),
+        title: titleFromPlan(planRef.current) || deriveTitle(requestPrompt),
         prompt: requestPrompt,
         html: finalHtml,
         scene: sceneFromPrompt(requestPrompt),
@@ -857,6 +920,15 @@ export default function Home() {
     generate(item.prompt || `a ${item.scene} game called ${item.title}, polished and fun`);
   }
 
+  // Real published games play in a new tab; demo cards remix into a new build.
+  function openGalleryItem(item) {
+    if (item.real && item.id) {
+      window.open(`/g/${item.id}`, "_blank", "noopener");
+    } else {
+      openCommunity(item);
+    }
+  }
+
   function openProject(project) {
     setHtml(project.html);
     setActivePrompt(project.prompt);
@@ -896,6 +968,26 @@ export default function Home() {
   }
 
   const cycle = CYCLE_WORDS[wordIndex];
+
+  // Community gallery: real published games when we have them, else the curated
+  // demo set — filtered by the active tab.
+  const galleryItems = useMemo(() => {
+    const base = publicGames.length
+      ? publicGames.map((g) => ({
+          id: g.id,
+          title: g.title,
+          scene: g.scene || "neon",
+          author: "community",
+          remixes: formatK(g.plays),
+          color: SCENE_COLORS[g.scene] || "#06d6a0",
+          prompt: g.prompt,
+          real: true,
+        }))
+      : COMMUNITY;
+    const filtered = filterByTab(base, tab);
+    // "Discover" surfaces variety — flip the popularity order for fresh finds.
+    return tab === "Discover" ? [...filtered].reverse() : filtered;
+  }, [publicGames, tab]);
 
   if (view === "workspace") {
     return (
@@ -1081,8 +1173,8 @@ export default function Home() {
           </div>
         </div>
         <div className="gallery">
-          {COMMUNITY.map((item, i) => (
-            <CommunityCard key={item.title} item={item} index={i} onOpen={openCommunity} />
+          {galleryItems.map((item, i) => (
+            <CommunityCard key={item.id || item.title} item={item} index={i} onOpen={openGalleryItem} />
           ))}
         </div>
       </section>
