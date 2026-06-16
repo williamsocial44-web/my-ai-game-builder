@@ -12,9 +12,10 @@ import {
   buildGameBlueprint,
   CORE_GAME_KNOWLEDGE,
   assessComplexity,
+  detectGameArchetype,
 } from "../../../lib/game-knowledge";
 import { POPULARITY_DNA } from "../../../lib/popularity-dna";
-import { generateConceptImage } from "../../../lib/concept-art";
+import { generateConceptArt } from "../../../lib/concept-art";
 
 export const runtime = "nodejs";
 
@@ -375,24 +376,27 @@ export async function POST(request) {
     // this runs for plan requests, so the concept blurb stays fast.
     const genre = detectGenre(prompt);
     const visualTheme = detectVisualTheme(prompt);
+    const archetype = detectGameArchetype(prompt);
 
     // Pick the model + reasoning depth: explicit client choice, else auto from
     // the prompt's complexity.
     const cfg = pickGenerationConfig(prompt, body?.quality);
 
     // Free concept art (Pollinations) gives the multimodal generator a visual
-    // target so the game's look is intentional, not flat boxes. Skip it for the
-    // quick/cheap tiers (simple classics, explicit "Fast") and when the client
-    // opts out — and fetch it concurrently with the other prep so it adds no
-    // extra latency beyond its own. Always best-effort: null ⇒ no image.
+    // target so the game's look is intentional, not flat boxes. Games with
+    // limited visibility (Among Us, stealth, horror) get an extra "what the
+    // player actually sees" shot so the model builds the vision-limited reality,
+    // not a fully-lit map. Skip for the quick/cheap tiers (simple classics,
+    // explicit "Fast") and when the client opts out. Fetched concurrently with
+    // the other prep, all shots in parallel — best-effort, [] ⇒ no images.
     const wantImage =
       body?.conceptArt !== false && cfg.tier !== "simple" && cfg.tier !== "fast";
-    const [lessonsContext, blueprint, conceptImage] = await Promise.all([
+    const [lessonsContext, blueprint, conceptImages] = await Promise.all([
       buildLessonsContext(prompt).catch(() => ""),
       buildGameBlueprint(prompt),
       wantImage
-        ? generateConceptImage({ prompt, visualTheme }).catch(() => null)
-        : Promise.resolve(null),
+        ? generateConceptArt({ prompt, visualTheme, archetype }).catch(() => [])
+        : Promise.resolve([]),
     ]);
     const systemPrompt = buildGenerateSystemPrompt(
       lessonsContext,
@@ -401,27 +405,28 @@ export async function POST(request) {
     );
 
     console.log(
-      `GENERATE routing: tier=${cfg.tier} model=${cfg.model} effort=${cfg.effort} image=${conceptImage ? "yes" : "no"}`
+      `GENERATE routing: tier=${cfg.tier} model=${cfg.model} effort=${cfg.effort} images=${conceptImages.length}`
     );
 
-    // Hand the image to the model as art direction — recreate the FEEL in code,
-    // never load it at runtime (games must stay self-contained).
-    const userContent = conceptImage
-      ? [
-          {
-            type: "image",
-            source: {
-              type: "base64",
-              media_type: conceptImage.media_type,
-              data: conceptImage.data,
-            },
-          },
-          {
-            type: "text",
-            text: `${prompt}\n\nThe attached image is AI-generated concept art of the intended look. Use it as ART DIRECTION: match its color palette, mood, composition, and the style of its characters and environment in your canvas/HTML code. You are recreating that feel in code — do NOT copy it pixel-for-pixel and do NOT load or reference any external image; draw everything yourself.`,
-          },
-        ]
-      : prompt;
+    // Hand the images to the model as art direction — each captioned so it knows
+    // what the shot represents. The model recreates the FEEL in code and never
+    // loads an image at runtime (games must stay self-contained).
+    let userContent = prompt;
+    if (conceptImages.length) {
+      const blocks = [];
+      conceptImages.forEach((img, i) => {
+        blocks.push({ type: "text", text: `Concept image ${i + 1} — ${img.caption}:` });
+        blocks.push({
+          type: "image",
+          source: { type: "base64", media_type: img.media_type, data: img.data },
+        });
+      });
+      blocks.push({
+        type: "text",
+        text: `${prompt}\n\nThe ${conceptImages.length} image(s) above are AI-generated concept art of the intended look — use them as ART DIRECTION: match the palette, mood, composition, and the style of the characters and environment. CRITICAL: if a "what the player actually sees" shot shows limited vision and darkness, the running game MUST look like that during play — a lit vision radius/cone around the player with the rest of the map dimmed or hidden and walls blocking sight — not a fully-lit map. Recreate the feel in code; do NOT copy pixel-for-pixel and do NOT load or reference any external image — draw everything yourself.`,
+      });
+      userContent = blocks;
+    }
 
     // Log the generation up-front so its id can ride back on a header — the
     // client attaches the player's rating to it later (see /api/feedback).
