@@ -16,13 +16,20 @@ import { POPULARITY_DNA } from "../../../lib/popularity-dna";
 
 export const runtime = "nodejs";
 
-const MAX_GENERATE_TOKENS = 16000;
+// Generation runs on the most capable model with adaptive thinking + high
+// effort — building a complete, polished game is a hard coding+design task, so
+// max intelligence matters more than latency. Thinking tokens share the output
+// budget, so max_tokens is generous (streamed, so no HTTP timeout). All three
+// are env-overridable if you want to trade intelligence for speed/cost:
+//   GENERATE_MODEL=claude-sonnet-4-6  GENERATE_EFFORT=medium
+const MAX_GENERATE_TOKENS = 64000;
 const MAX_PLAN_TOKENS = 140;
 const MAX_PROMPT_LENGTH = 300;
 const MAX_EDIT_INSTRUCTION_LENGTH = 300;
 const MAX_EDIT_HTML_LENGTH = 60000;
 const MAX_REQUESTS_PER_HOUR = 30;
-const GENERATE_MODEL = process.env.GENERATE_MODEL || "claude-sonnet-4-6";
+const GENERATE_MODEL = process.env.GENERATE_MODEL || "claude-opus-4-8";
+const GENERATE_EFFORT = process.env.GENERATE_EFFORT || "high"; // low|medium|high|xhigh|max
 const PLAN_MODEL = process.env.PLAN_MODEL || "claude-haiku-4-5-20251001";
 const MOCK_MODE = false;
 
@@ -425,6 +432,11 @@ function streamGameHtml({ anthropic, system, userContent, onComplete, headers })
     model: GENERATE_MODEL,
     max_tokens: MAX_GENERATE_TOKENS,
     system,
+    // Adaptive thinking lets the model plan the architecture and game design
+    // before writing code; effort tunes how deeply. Thinking blocks stream with
+    // empty content (we don't surface them) — only the HTML text is captured.
+    thinking: { type: "adaptive" },
+    output_config: { effort: GENERATE_EFFORT },
     messages: [{ role: "user", content: userContent }],
   });
 
