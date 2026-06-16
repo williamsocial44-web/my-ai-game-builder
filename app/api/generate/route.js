@@ -22,7 +22,7 @@ const MAX_PLAN_TOKENS = 140;
 const MAX_PROMPT_LENGTH = 300;
 const MAX_EDIT_INSTRUCTION_LENGTH = 300;
 const MAX_EDIT_HTML_LENGTH = 60000;
-const MAX_REQUESTS_PER_HOUR = 8;
+const MAX_REQUESTS_PER_HOUR = 30;
 const GENERATE_MODEL = process.env.GENERATE_MODEL || "claude-sonnet-4-6";
 const PLAN_MODEL = process.env.PLAN_MODEL || "claude-haiku-4-5-20251001";
 const MOCK_MODE = false;
@@ -219,16 +219,6 @@ export async function POST(request) {
   try {
     const ip = getClientIp(request);
 
-    if (!checkRateLimit(ip)) {
-      return Response.json(
-        {
-          error:
-            "Too many requests. Please wait before generating more games.",
-        },
-        { status: 429 }
-      );
-    }
-
     let body = {};
     try {
       body = await request.json();
@@ -244,15 +234,30 @@ export async function POST(request) {
           ? "edit"
           : "generate";
 
-    // Edit mode tweaks an existing game instead of describing a new one.
+    // Edit mode tweaks an existing game instead of describing a new one. It
+    // does its own rate-limit check after validating its inputs.
     if (mode === "edit") {
-      return handleEdit(body);
+      return handleEdit(body, ip);
     }
 
     if (!prompt || typeof prompt !== "string" || !prompt.trim()) {
       return Response.json(
         { error: "Please describe a game first." },
         { status: 400 }
+      );
+    }
+
+    // Only the expensive game build is rate-limited. The cheap concept blurb
+    // (plan) and any validation failures above don't count against the budget,
+    // so a build (which fires plan + generate) costs the user a single slot and
+    // the chat-to-iterate loop isn't starved by it.
+    if (mode === "generate" && !checkRateLimit(ip)) {
+      return Response.json(
+        {
+          error:
+            "Too many requests. Please wait before generating more games.",
+        },
+        { status: 429 }
       );
     }
 
@@ -364,7 +369,7 @@ export async function POST(request) {
 
 // Edit mode: take the current game + a change request and stream back the full
 // updated file. This is the in-workspace "ask for a change" iteration loop.
-async function handleEdit(body) {
+async function handleEdit(body, ip) {
   const apiKey = process.env.ANTHROPIC_API_KEY;
   if (!apiKey) {
     return Response.json(
@@ -384,6 +389,14 @@ async function handleEdit(body) {
     return Response.json(
       { error: "Nothing to change yet — build a game first." },
       { status: 400 }
+    );
+  }
+
+  // Charge the budget only once we know it's a real edit (not a validation miss).
+  if (ip && !checkRateLimit(ip)) {
+    return Response.json(
+      { error: "Too many requests. Please wait before making more changes." },
+      { status: 429 }
     );
   }
 
