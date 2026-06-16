@@ -257,7 +257,6 @@ function Composer({ value, onChange, onSubmit, loading, placeholder, compact, qu
           <button type="button" className="icon-pill" title="Attach a reference (coming soon)">
             <Icon name="attach" />
           </button>
-          {setQuality && <QualitySelect quality={quality} setQuality={setQuality} />}
           {!compact && (
             <button type="button" className="icon-pill" title="Visibility">
               <Icon name="globe" />
@@ -266,15 +265,18 @@ function Composer({ value, onChange, onSubmit, loading, placeholder, compact, qu
             </button>
           )}
         </div>
-        <button
-          type="button"
-          className={`send-btn ${loading ? "is-loading" : ""}`}
-          onClick={onSubmit}
-          disabled={loading || !value.trim()}
-          aria-label="Build game"
-        >
-          <Icon name={loading ? "refresh" : "send"} />
-        </button>
+        <div className="composer-bar-right">
+          {setQuality && <QualitySelect quality={quality} setQuality={setQuality} />}
+          <button
+            type="button"
+            className={`send-btn ${loading ? "is-loading" : ""}`}
+            onClick={onSubmit}
+            disabled={loading || !value.trim()}
+            aria-label="Build game"
+          >
+            <Icon name={loading ? "refresh" : "send"} />
+          </button>
+        </div>
       </div>
     </div>
   );

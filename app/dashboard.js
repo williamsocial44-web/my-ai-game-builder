@@ -371,7 +371,6 @@ function Thumb({ scene, cover }) {
 const NAV = [
   { id: "home", label: "Home", icon: "home" },
   { id: "templates", label: "Templates", icon: "compass" },
-  { id: "insights", label: "Insights", icon: "chart" },
   { id: "connectors", label: "Connectors", icon: "nodes" },
 ];
 
@@ -1232,144 +1231,6 @@ function PlansView({ onNotify }) {
   );
 }
 
-/* -------------------------------------------------------- insights view --- */
-
-const SCENE_LABELS = {
-  neon: "Neon / arcade",
-  space: "Space",
-  clicker: "Idle / clicker",
-  word: "Word & puzzle",
-  cards: "Cards",
-  platformer: "Platformer",
-  fantasy: "Fantasy",
-  retro: "Retro",
-};
-
-function fmtDuration(ms) {
-  if (!ms || ms < 1000) return "—";
-  const s = Math.round(ms / 1000);
-  if (s < 60) return `${s}s`;
-  const m = Math.floor(s / 60);
-  const rem = s % 60;
-  return rem ? `${m}m ${rem}s` : `${m}m`;
-}
-
-function InsightsView({ projects }) {
-  const [sessions, setSessions] = useState(null); // null = loading, [] = none
-
-  useEffect(() => {
-    let active = true;
-    listSessions().then((rows) => {
-      if (active) setSessions(Array.isArray(rows) ? rows : []);
-    });
-    return () => {
-      active = false;
-    };
-  }, []);
-
-  const stats = useMemo(() => {
-    const totalGames = projects.length;
-    const totalPlays = projects.reduce((sum, p) => sum + (p.plays || 0), 0);
-    const published = projects.filter((p) => p.visibility === "public").length;
-
-    const byScene = {};
-    for (const p of projects) {
-      const key = p.scene || "neon";
-      byScene[key] = (byScene[key] || 0) + 1;
-    }
-    const scenes = Object.entries(byScene)
-      .map(([scene, count]) => ({ scene, count }))
-      .sort((a, b) => b.count - a.count);
-
-    const topGames = [...projects]
-      .sort((a, b) => (b.plays || 0) - (a.plays || 0))
-      .slice(0, 5);
-
-    return { totalGames, totalPlays, published, scenes, topGames };
-  }, [projects]);
-
-  const avgSession = useMemo(() => {
-    if (!sessions || !sessions.length) return 0;
-    const sum = sessions.reduce((a, s) => a + (s.duration_ms || 0), 0);
-    return sum / sessions.length;
-  }, [sessions]);
-
-  const maxSceneCount = stats.scenes.length ? stats.scenes[0].count : 0;
-
-  const cards = [
-    { label: "Games built", value: stats.totalGames.toLocaleString(), icon: "controller" },
-    { label: "Total plays", value: stats.totalPlays.toLocaleString(), icon: "play" },
-    { label: "Published", value: stats.published.toLocaleString(), icon: "external" },
-    {
-      label: "Avg. play time",
-      value: sessions === null ? "…" : fmtDuration(avgSession),
-      icon: "clock",
-    },
-  ];
-
-  return (
-    <div className="page ins-page">
-      <div className="page-head">
-        <h1>Insights</h1>
-      </div>
-      <p className="page-lead">
-        How your games are performing. Play counts and play-time come from people playing your
-        <strong> published</strong> games — publish more to see these grow.
-      </p>
-
-      <div className="ins-cards">
-        {cards.map((c) => (
-          <div key={c.label} className="ins-card">
-            <span className="ins-card-ico"><Icon name={c.icon} /></span>
-            <strong>{c.value}</strong>
-            <small>{c.label}</small>
-          </div>
-        ))}
-      </div>
-
-      <div className="ins-grid">
-        <section className="ins-panel">
-          <h2>Top games by plays</h2>
-          {stats.topGames.length === 0 || stats.totalPlays === 0 ? (
-            <p className="ins-empty">No plays yet. Publish a game and share its link to start collecting plays.</p>
-          ) : (
-            <ol className="ins-top">
-              {stats.topGames.map((g) => (
-                <li key={g.id || g.title}>
-                  <span className={`scene scene-${g.scene} ins-top-thumb`} />
-                  <span className="ins-top-main">
-                    <strong>{g.title}</strong>
-                    <small>{(g.plays || 0).toLocaleString()} plays</small>
-                  </span>
-                </li>
-              ))}
-            </ol>
-          )}
-        </section>
-
-        <section className="ins-panel">
-          <h2>What you build most</h2>
-          {stats.scenes.length === 0 ? (
-            <p className="ins-empty">Build a game to see your genre mix here.</p>
-          ) : (
-            <ul className="ins-bars">
-              {stats.scenes.map(({ scene, count }) => (
-                <li key={scene}>
-                  <span className="ins-bar-label">{SCENE_LABELS[scene] || scene}</span>
-                  <span className="ins-bar-track">
-                    <i style={{ width: `${maxSceneCount ? (count / maxSceneCount) * 100 : 0}%` }} />
-                  </span>
-                  <span className="ins-bar-count">{count}</span>
-                </li>
-              ))}
-            </ul>
-          )}
-        </section>
-      </div>
-    </div>
-  );
-}
-
 /* -------------------------------------------------------- command palette --- */
 
 function ProjectPreview({ project, user }) {
@@ -1431,7 +1292,6 @@ function CommandPalette({ open, onClose, recents, onOpenProject, onNavigate, onN
       { id: "projects", group: "Navigate to", label: "All projects", icon: "grid", desc: "Everything you've built", run: () => onNavigate("projects") },
       { id: "starred", group: "Navigate to", label: "Starred", icon: "star", desc: "Games you've starred", run: () => onNavigate("starred") },
       { id: "templates", group: "Navigate to", label: "Templates", icon: "compass", desc: "Ready-made games to remix", run: () => onNavigate("templates") },
-      { id: "insights", group: "Navigate to", label: "Insights", icon: "chart", desc: "Plays, play-time, and your genre mix", run: () => onNavigate("insights") },
       { id: "connectors", group: "Navigate to", label: "Connectors", icon: "nodes", desc: "External integrations", run: () => onNavigate("connectors") },
       { id: "settings", group: "Settings", label: "Settings", icon: "gear", desc: "Workspace preferences", run: () => onNavigate("settings") },
       { id: "plans", group: "Settings", label: "Plans & credits", icon: "card", desc: "Upgrade for more builds and faster generations", run: () => onNavigate("plans") },
@@ -1617,7 +1477,6 @@ export default function Dashboard({ user, projects, onBuild, onOpenProject, onSi
           />
         )}
         {section === "templates" && <TemplatesView onBuild={onBuild} />}
-        {section === "insights" && <InsightsView projects={projects} />}
         {section === "connectors" && <ConnectorsView onNotify={onNotify} />}
         {section === "settings" && <SettingsView user={user} onNotify={onNotify} />}
         {section === "plans" && <PlansView onNotify={onNotify} />}
