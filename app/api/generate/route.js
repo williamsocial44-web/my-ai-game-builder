@@ -165,6 +165,7 @@ FINAL SELF-CHECK — before you output, silently verify every item is TRUE and f
 - The Start button uses id="startBtn" and a startGame() function — clicking it actually begins play.
 - There is a clear win OR lose state and a working Restart after game over.
 - Something animates within the first second and the player can act within 3 seconds.
+- LAYOUT: no two rooms/zones/panels/labels overlap, every actor is spread out and individually visible (none stacked on one spot), and all HUD text sits fully on-screen with margin from the edges.
 - Every player action has instant visual feedback (flash / particle / shake / score pop) AND a sound.
 - Difficulty ramps over time and the game stays genuinely fun for at least 2 minutes.
 - It adapts to any window size and is playable on touch (on-screen controls if it uses keys).
