@@ -853,13 +853,167 @@ function TemplatesView({ onBuild }) {
 
 /* -------------------------------------------------------- connectors view --- */
 
-function ConnectorsView() {
+// A curated directory of integrations that make sense for an AI game builder.
+// "connected" marks what Gamecraft actually runs on today; the rest are
+// catalogued and light up "coming soon" until wired.
+const CONNECTOR_CATS = [
+  "AI & Audio",
+  "Art & Assets",
+  "Backend & Data",
+  "Payments",
+  "Publishing",
+  "Community",
+  "Analytics",
+  "Email",
+];
+
+const CONNECTORS = [
+  // AI & Audio
+  { name: "Claude", cat: "AI & Audio", c: "#d97757", desc: "Generate complete, playable games from a single sentence.", connected: true },
+  { name: "ElevenLabs", cat: "AI & Audio", c: "#5b8cff", desc: "Add AI voices, narration, and sound effects to your games." },
+  { name: "Replicate", cat: "AI & Audio", c: "#7c3aed", desc: "Generate sprites, art, and audio with open-source AI models." },
+  { name: "HeyGen", cat: "AI & Audio", c: "#4b3df5", desc: "Make AI trailers and avatar intros to promote your games." },
+  { name: "Perplexity", cat: "AI & Audio", c: "#20808d", desc: "Power trivia and quiz games with a live answer engine." },
+
+  // Art & Assets
+  { name: "Figma", cat: "Art & Assets", c: "#f24e1e", desc: "Design game UI and import frames straight into a build." },
+  { name: "Canva", cat: "Art & Assets", c: "#00c4cc", desc: "Create thumbnails, key art, and promo graphics for your games." },
+  { name: "AWS S3", cat: "Art & Assets", c: "#ff9900", desc: "Store and serve large game assets, sprites, and builds." },
+
+  // Backend & Data
+  { name: "Supabase", cat: "Backend & Data", c: "#3ecf8e", desc: "Cloud saves, player accounts, and global leaderboards.", connected: true },
+  { name: "Airtable", cat: "Backend & Data", c: "#fcb400", desc: "Manage levels, items, and config in a visual database." },
+  { name: "Google Sheets", cat: "Backend & Data", c: "#0f9d58", desc: "Drive game balancing and content from a spreadsheet." },
+  { name: "BigQuery", cat: "Backend & Data", c: "#4285f4", desc: "Analyze player data and game telemetry at scale." },
+  { name: "Snowflake", cat: "Backend & Data", c: "#29b5e8", desc: "Warehouse and model your player analytics." },
+
+  // Payments
+  { name: "Stripe", cat: "Payments", c: "#635bff", desc: "Sell games, season passes, and in-game items." },
+  { name: "Paddle", cat: "Payments", c: "#f4c430", desc: "Sell worldwide with sales tax handled for you." },
+  { name: "Polar", cat: "Payments", c: "#4f7cff", desc: "Subscriptions and creator billing for your games." },
+  { name: "Shopify", cat: "Payments", c: "#95bf47", desc: "Sell merch and physical goods alongside your games." },
+
+  // Publishing
+  { name: "WordPress.com", cat: "Publishing", c: "#21759b", desc: "Embed your games on any WordPress site." },
+  { name: "Notion", cat: "Publishing", c: "#8b8b94", desc: "Drop playable games right into Notion pages." },
+  { name: "Twitch", cat: "Publishing", c: "#9146ff", desc: "Showcase and stream your games to viewers." },
+  { name: "TikTok", cat: "Publishing", c: "#fe2c55", desc: "Share game clips and grow your audience." },
+
+  // Community
+  { name: "Discord", cat: "Community", c: "#5865f2", desc: "Player communities, drop alerts, and bot integrations." },
+  { name: "Slack", cat: "Community", c: "#36c5f0", desc: "Get build, sale, and milestone notifications." },
+  { name: "Telegram", cat: "Community", c: "#229ed9", desc: "Run player community bots and broadcasts." },
+  { name: "Twilio", cat: "Community", c: "#f22f46", desc: "Text players about events, drops, and sales." },
+
+  // Analytics
+  { name: "PostHog", cat: "Analytics", c: "#f54e00", desc: "Player funnels, retention, and feature flags." },
+  { name: "Amplitude", cat: "Analytics", c: "#1f6fff", desc: "Track how players move through your games." },
+  { name: "Google Search Console", cat: "Analytics", c: "#4285f4", desc: "See how players discover your game pages." },
+  { name: "Semrush", cat: "Analytics", c: "#ff642d", desc: "SEO and keyword research for your game pages." },
+  { name: "Algolia", cat: "Analytics", c: "#5468ff", desc: "Fast search across your published game catalog." },
+
+  // Email
+  { name: "Resend", cat: "Email", c: "#8b8b94", desc: "Send players receipts and update emails." },
+  { name: "Mailgun", cat: "Email", c: "#c02126", desc: "Reliable transactional email for your games." },
+  { name: "Brevo", cat: "Email", c: "#0b996e", desc: "Email, SMS, and marketing automation in one place." },
+];
+
+function ConnectorsView({ onNotify }) {
+  const [cat, setCat] = useState("All");
+  const [query, setQuery] = useState("");
+
+  const counts = useMemo(() => {
+    const map = { All: CONNECTORS.length };
+    for (const c of CONNECTOR_CATS) {
+      map[c] = CONNECTORS.filter((x) => x.cat === c).length;
+    }
+    return map;
+  }, []);
+
+  const enabledCount = useMemo(
+    () => CONNECTORS.filter((c) => c.connected).length,
+    []
+  );
+
+  const list = useMemo(() => {
+    const q = query.trim().toLowerCase();
+    return CONNECTORS.filter((c) => {
+      if (cat !== "All" && c.cat !== cat) return false;
+      if (q && !`${c.name} ${c.desc}`.toLowerCase().includes(q)) return false;
+      return true;
+    });
+  }, [cat, query]);
+
   return (
-    <div className="page">
+    <div className="page cx-page">
       <div className="page-head">
         <h1>Connectors</h1>
       </div>
-      <p className="page-lead">Coming soon. Connectors will allow you to integrate your games with external services.</p>
+      <p className="page-lead">
+        Plug your games into the tools you already use. <strong>{enabledCount} connected</strong> and
+        ready — the rest are on the way. Pick a category or search to explore.
+      </p>
+
+      <div className="cx-bar">
+        <label className="proj-search cx-search">
+          <Icon name="search" />
+          <input value={query} onChange={(e) => setQuery(e.target.value)} placeholder="Search connectors…" />
+        </label>
+      </div>
+
+      <div className="cx-cats">
+        {["All", ...CONNECTOR_CATS].map((c) => (
+          <button
+            key={c}
+            type="button"
+            className={`cx-cat ${cat === c ? "is-active" : ""}`}
+            onClick={() => setCat(c)}
+          >
+            {c} <span className="cx-cat-n">{counts[c] ?? 0}</span>
+          </button>
+        ))}
+      </div>
+
+      {list.length === 0 ? (
+        <p className="ins-empty">No connectors match “{query}”.</p>
+      ) : (
+        <div className="cx-grid">
+          {list.map((c) => (
+            <div key={c.name} className="cx-card">
+              <span className="cx-tile" style={{ background: c.c }}>
+                {c.name[0]}
+              </span>
+              <span className="cx-main">
+                <strong>{c.name}</strong>
+                <small>{c.desc}</small>
+              </span>
+              {c.connected ? (
+                <span className="cx-pill cx-pill-on">
+                  <Icon name="check" /> Connected
+                </span>
+              ) : (
+                <button
+                  type="button"
+                  className="cx-connect"
+                  onClick={() => onNotify?.(`${c.name} connector is coming soon`)}
+                >
+                  Connect
+                </button>
+              )}
+            </div>
+          ))}
+        </div>
+      )}
+
+      <div className="cx-foot">
+        <span>
+          <strong>Missing a connector?</strong>
+          <small>Tell us what you’d plug your games into.</small>
+        </span>
+        <button type="button" className="btn btn-soft" onClick={() => onNotify?.("Thanks — we’ll consider it!")}>
+          <Icon name="plus" /> Request
+        </button>
+      </div>
     </div>
   );
 }
@@ -1415,7 +1569,7 @@ export default function Dashboard({ user, projects, onBuild, onOpenProject, onSi
         )}
         {section === "templates" && <TemplatesView onBuild={onBuild} />}
         {section === "insights" && <InsightsView projects={projects} />}
-        {section === "connectors" && <ConnectorsView />}
+        {section === "connectors" && <ConnectorsView onNotify={onNotify} />}
         {section === "settings" && <SettingsView user={user} onNotify={onNotify} />}
         {section === "plans" && <PlansView onNotify={onNotify} />}
       </main>
