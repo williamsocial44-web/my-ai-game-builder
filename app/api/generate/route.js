@@ -37,13 +37,17 @@ const PLAN_MODEL = process.env.PLAN_MODEL || "claude-haiku-4-5-20251001";
 const MOCK_MODE = false;
 
 // Map a complexity score to a model + effort + whether to think first.
-// score >= 4 → very complex; >= 2 → complex; otherwise simple/standard.
+// Cost-tuned: the pricey Opus path is reserved for the genuinely hardest
+// builds (3D worlds, deep multi-system games — score >= 4). The broad middle
+// (most real games, including social deduction, RPG-lite, tower defense) runs
+// great — and roughly half the cost — on Sonnet WITH thinking. Quality comes
+// from the prompt, not from paying for Opus on every build.
 function configForScore(score) {
   if (FORCED_MODEL) {
     return { model: FORCED_MODEL, effort: FORCED_EFFORT || "high", think: true, tier: "forced" };
   }
-  if (score >= 4) return { model: SMART_MODEL, effort: "xhigh", think: true, tier: "very-complex" };
-  if (score >= 2) return { model: SMART_MODEL, effort: "high", think: true, tier: "complex" };
+  if (score >= 4) return { model: SMART_MODEL, effort: "high", think: true, tier: "very-complex" };
+  if (score >= 2) return { model: FAST_MODEL, effort: "high", think: true, tier: "complex" };
   return { model: FAST_MODEL, effort: "medium", think: false, tier: "simple" };
 }
 
@@ -166,6 +170,7 @@ FINAL SELF-CHECK — before you output, silently verify every item is TRUE and f
 - There is a clear win OR lose state and a working Restart after game over.
 - Something animates within the first second and the player can act within 3 seconds.
 - LAYOUT: no two rooms/zones/panels/labels overlap, every actor is spread out and individually visible (none stacked on one spot), and all HUD text sits fully on-screen with margin from the edges.
+- LOOKS DESIGNED: characters are built from multiple shapes with a highlight + drop shadow (not flat pills), zones/rooms have interior detail and tint (not empty boxes), backgrounds use a gradient, and the player/interactables visibly pop. A frozen frame should look like a finished game, not a wireframe.
 - Every player action has instant visual feedback (flash / particle / shake / score pop) AND a sound.
 - Difficulty ramps over time and the game stays genuinely fun for at least 2 minutes.
 - It adapts to any window size and is playable on touch (on-screen controls if it uses keys).
