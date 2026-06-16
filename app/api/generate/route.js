@@ -48,9 +48,12 @@ function configForScore(score) {
   if (FORCED_MODEL) {
     return { model: FORCED_MODEL, effort: FORCED_EFFORT || "high", think: true, tier: "forced" };
   }
+  // medium effort keeps builds to ~1-2 min instead of grinding for 5 — Sonnet
+  // high spent too long thinking. Quality holds because the prompt carries the
+  // craft; raise to high only for the rare very-complex (Opus) path.
   if (score >= 4) return { model: SMART_MODEL, effort: "high", think: true, tier: "very-complex" };
-  if (score >= 2) return { model: FAST_MODEL, effort: "high", think: true, tier: "complex" };
-  return { model: FAST_MODEL, effort: "medium", think: false, tier: "simple" };
+  if (score >= 2) return { model: FAST_MODEL, effort: "medium", think: true, tier: "complex" };
+  return { model: FAST_MODEL, effort: "low", think: false, tier: "simple" };
 }
 
 // An explicit quality choice from the client ("fast" / "smart") overrides the
@@ -60,7 +63,7 @@ function configForQuality(quality) {
     return { model: FORCED_MODEL, effort: FORCED_EFFORT || "high", think: true, tier: "forced" };
   }
   if (quality === "fast") {
-    return { model: FAST_MODEL, effort: "medium", think: false, tier: "fast" };
+    return { model: FAST_MODEL, effort: "low", think: false, tier: "fast" };
   }
   if (quality === "smart") {
     return { model: SMART_MODEL, effort: "high", think: true, tier: "smart" };
