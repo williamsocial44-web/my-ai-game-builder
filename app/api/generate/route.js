@@ -16,6 +16,7 @@ import {
 } from "../../../lib/game-knowledge";
 import { POPULARITY_DNA } from "../../../lib/popularity-dna";
 import { generateConceptArt } from "../../../lib/concept-art";
+import { isOllamaEnabled, ollamaChat, ollamaModel } from "../../../lib/ollama";
 
 export const runtime = "nodejs";
 
@@ -24,7 +25,10 @@ export const runtime = "nodejs";
 // games → the most capable model with adaptive thinking. Thinking tokens share
 // the output budget, so max_tokens is generous (streamed, so no HTTP timeout).
 // Set GENERATE_MODEL / GENERATE_EFFORT to force one config and skip routing.
-const MAX_GENERATE_TOKENS = 64000;
+// A complete single-file game is ~6-12k tokens; 32k leaves room for thinking on
+// the Opus path while bounding worst-case build time (64k let the model run 5+
+// minutes generating an enormous file).
+const MAX_GENERATE_TOKENS = 32000;
 const MAX_PLAN_TOKENS = 140;
 const MAX_PROMPT_LENGTH = 300;
 const MAX_EDIT_INSTRUCTION_LENGTH = 300;
@@ -48,11 +52,12 @@ function configForScore(score) {
   if (FORCED_MODEL) {
     return { model: FORCED_MODEL, effort: FORCED_EFFORT || "high", think: true, tier: "forced" };
   }
-  // medium effort keeps builds to ~1-2 min instead of grinding for 5 — Sonnet
-  // high spent too long thinking. Quality holds because the prompt carries the
-  // craft; raise to high only for the rare very-complex (Opus) path.
+  // Thinking on Sonnet ran 5+ minutes for one game, so the common auto path
+  // builds WITHOUT a long thinking phase — the rich prompt carries the craft and
+  // HTML starts streaming immediately. Thinking is reserved for the rare
+  // very-complex (Opus) path and the explicit "Smart" choice.
   if (score >= 4) return { model: SMART_MODEL, effort: "high", think: true, tier: "very-complex" };
-  if (score >= 2) return { model: FAST_MODEL, effort: "medium", think: true, tier: "complex" };
+  if (score >= 2) return { model: FAST_MODEL, effort: "medium", think: false, tier: "complex" };
   return { model: FAST_MODEL, effort: "low", think: false, tier: "simple" };
 }
 
@@ -361,7 +366,25 @@ export async function POST(request) {
 
     // The concept blurb is short — keep it as a single fast JSON response.
     // (Plan returns here, before any of the generate-only knowledge work below.)
+    // Cost-saving: try the cheap Ollama engine first, fall back to Claude if it's
+    // disabled, slow, or errors — the plan must always come back.
     if (mode === "plan") {
+      if (isOllamaEnabled()) {
+        try {
+          const text = await ollamaChat({
+            system: PLAN_SYSTEM_PROMPT,
+            user: prompt,
+            maxTokens: 2000, // gpt-oss is a reasoning model — needs room beyond the short answer
+            timeoutMs: 25000,
+          });
+          if (text) {
+            console.log(`PLAN via Ollama (${ollamaModel()})`);
+            return Response.json({ plan: text.trim(), engine: "ollama" });
+          }
+        } catch (err) {
+          console.warn("PLAN Ollama failed, falling back to Claude:", err.message);
+        }
+      }
       const message = await anthropic.messages.create({
         model: PLAN_MODEL,
         max_tokens: MAX_PLAN_TOKENS,
@@ -372,7 +395,7 @@ export async function POST(request) {
         .filter((block) => block.type === "text")
         .map((block) => block.text)
         .join("");
-      return Response.json({ plan: text.trim() });
+      return Response.json({ plan: text.trim(), engine: "claude" });
     }
 
     // Generate-only: assemble the genre, theme, lessons, and blueprint. None of
