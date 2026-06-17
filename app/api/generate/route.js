@@ -374,8 +374,8 @@ export async function POST(request) {
           const text = await ollamaChat({
             system: PLAN_SYSTEM_PROMPT,
             user: prompt,
-            maxTokens: 2000, // gpt-oss is a reasoning model — needs room beyond the short answer
-            timeoutMs: 25000,
+            maxTokens: 600, // a 5-line concept; qwen3-coder isn't a reasoning model
+            timeoutMs: 20000,
           });
           if (text) {
             console.log(`PLAN via Ollama (${ollamaModel()})`);
@@ -549,12 +549,36 @@ async function handleEdit(body, ip) {
     instruction = instruction.slice(0, MAX_EDIT_INSTRUCTION_LENGTH);
   }
 
+  const userContent = `Here is the current game's full HTML:\n\n${html}\n\n---\n\nChange request: ${instruction}\n\nReturn the full updated HTML file with that change applied.`;
+
+  // Cost-saving: edits run great on qwen3-coder via Ollama. Buffer the full
+  // result so we can strip fences, sanity-check it, and fall back to Claude if
+  // it's disabled, errors, or returns something that isn't a real game. The
+  // explicit "Smart" choice forces Claude (the user asked for the best model).
+  if (isOllamaEnabled() && body?.quality !== "smart") {
+    try {
+      const raw = await ollamaChat({
+        system: EDIT_SYSTEM_PROMPT,
+        user: userContent,
+        maxTokens: 24000,
+        temperature: 0.3,
+        timeoutMs: 90000,
+      });
+      const edited = stripFences(raw);
+      if (looksLikeGameHtml(edited)) {
+        console.log(`EDIT via Ollama (${ollamaModel()})`);
+        return htmlOnceResponse(edited);
+      }
+      console.warn("EDIT Ollama output not a valid game, falling back to Claude");
+    } catch (err) {
+      console.warn("EDIT Ollama failed, falling back to Claude:", err.message);
+    }
+  }
+
   const cfg = pickEditConfig(instruction, html.length, body?.quality);
   console.log(`EDIT routing: tier=${cfg.tier} model=${cfg.model} effort=${cfg.effort}`);
 
   const anthropic = new Anthropic({ apiKey });
-  const userContent = `Here is the current game's full HTML:\n\n${html}\n\n---\n\nChange request: ${instruction}\n\nReturn the full updated HTML file with that change applied.`;
-
   return streamGameHtml({
     anthropic,
     system: EDIT_SYSTEM_PROMPT,
@@ -646,4 +670,35 @@ function streamGameHtml({ anthropic, system, userContent, model, effort, think, 
       ...(headers || {}),
     },
   });
+}
+
+// Wrap an already-complete HTML string in the same streamed Response shape the
+// client expects from streamGameHtml (used for the buffered Ollama edit path).
+function htmlOnceResponse(html, headers) {
+  const encoder = new TextEncoder();
+  const readable = new ReadableStream({
+    start(controller) {
+      controller.enqueue(encoder.encode(html));
+      controller.close();
+    },
+  });
+  return new Response(readable, {
+    headers: {
+      "Content-Type": "text/plain; charset=utf-8",
+      "Cache-Control": "no-store, no-transform",
+      "X-Accel-Buffering": "no",
+      ...(headers || {}),
+    },
+  });
+}
+
+// Sanity check that a model returned a real edited game, not prose or a stub —
+// gates the Ollama edit path's fallback to Claude.
+function looksLikeGameHtml(s) {
+  return (
+    typeof s === "string" &&
+    s.length > 400 &&
+    s.includes("<") &&
+    /<\/html>|<\/body>|startBtn/i.test(s)
+  );
 }
