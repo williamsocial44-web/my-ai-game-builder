@@ -370,6 +370,9 @@ function Workspace({
   const [assetResult, setAssetResult] = useState(null);
   const [showPaywall, setShowPaywall] = useState(false);
   const [injecting, setInjecting] = useState(false);
+  const [assetHighQuality, setAssetHighQuality] = useState(false);
+  const busyRef = useRef(false); // hard debounce: blocks concurrent generate calls
+  const lastGenRef = useRef(null); // dedup cache: { sig, result } of the last generation
 
   useEffect(() => {
     feedRef.current?.scrollTo({ top: feedRef.current.scrollHeight, behavior: "smooth" });
@@ -432,12 +435,24 @@ function Workspace({
   // /api/generate-asset. Degrades cleanly: a missing FAL_KEY shows an inline note,
   // and the premium-only animation routes to the upgrade prompt.
   async function generateAsset() {
+    if (busyRef.current) return; // debounce: ignore spam-clicks while a request is in flight
     if (assetAnimate && !isPremium) {
       setShowPaywall(true);
       return;
     }
     const p = assetPrompt.trim();
     if (!p) return;
+
+    // Dedup: an identical request (same prompt + settings) reuses the last result
+    // instead of re-billing fal.
+    const sig = `${p}|${assetAnimate ? "anim" : "static"}|${assetHighQuality ? "high" : "budget"}`;
+    if (lastGenRef.current && lastGenRef.current.sig === sig) {
+      setAssetResult(lastGenRef.current.result);
+      setAssetNote("");
+      return;
+    }
+
+    busyRef.current = true;
     setAssetBusy(true);
     setAssetNote("");
     setAssetResult(null);
@@ -445,21 +460,34 @@ function Workspace({
       const res = await fetch("/api/generate-asset", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ prompt: p, isAnimated: assetAnimate }),
+        body: JSON.stringify({
+          prompt: p,
+          quality: assetHighQuality ? "high" : "budget",
+          isAnimated: assetAnimate,
+          // The unchecked-by-default "Animate" checkbox IS the explicit video consent.
+          user_consented_to_video: assetAnimate,
+        }),
       });
       const data = await res.json().catch(() => ({}));
       if (res.status === 403 || data?.error === "PAYWALL_TRIGGERED") {
         setShowPaywall(true);
         return;
       }
+      if (res.status === 429) {
+        setAssetNote("Too many requests in a row — wait a moment and try again.");
+        return;
+      }
       if (!res.ok || !data.url) {
         setAssetNote(data.error || "Generation failed. Try again.");
         return;
       }
-      setAssetResult({ url: data.url, type: data.type });
+      const result = { url: data.url, type: data.type };
+      lastGenRef.current = { sig, result };
+      setAssetResult(result);
     } catch {
       setAssetNote("Generation failed. Try again.");
     } finally {
+      busyRef.current = false;
       setAssetBusy(false);
     }
   }
@@ -743,10 +771,19 @@ function Workspace({
                     boxSizing: "border-box",
                   }}
                 />
-                <label style={{ display: "flex", alignItems: "center", gap: 8, fontSize: 13, color: "var(--muted, #9a9aa2)", marginBottom: 16, cursor: "pointer" }}>
+                <label style={{ display: "flex", alignItems: "center", gap: 8, fontSize: 13, color: "var(--muted, #9a9aa2)", marginBottom: 10, cursor: assetAnimate ? "not-allowed" : "pointer", opacity: assetAnimate ? 0.5 : 1 }}>
+                  <input type="checkbox" checked={assetHighQuality} disabled={assetAnimate} onChange={(e) => setAssetHighQuality(e.target.checked)} />
+                  High quality <span style={{ color: "var(--dim, #8a8a92)" }}>· slower, costs more</span>
+                </label>
+                <label style={{ display: "flex", alignItems: "center", gap: 8, fontSize: 13, color: "var(--muted, #9a9aa2)", marginBottom: assetAnimate ? 10 : 16, cursor: "pointer" }}>
                   <input type="checkbox" checked={assetAnimate} onChange={(e) => setAssetAnimate(e.target.checked)} />
                   Animate sprite <span style={{ color: "var(--coral, #ff7a59)" }}>· Premium</span>
                 </label>
+                {assetAnimate && (
+                  <div className="modal-notice" style={{ borderColor: "rgba(255,180,80,0.4)", color: "#ffcf99", marginBottom: 16 }}>
+                    ⚠ Video is much slower and billed <strong>per second</strong> — far pricier than a static sprite. Leave this off unless you really want animation.
+                  </div>
+                )}
                 {assetNote && <div className="modal-notice">{assetNote}</div>}
                 <button
                   type="button"
@@ -755,7 +792,7 @@ function Workspace({
                   onClick={generateAsset}
                   disabled={assetBusy || !assetPrompt.trim()}
                 >
-                  {assetBusy ? "Generating…" : "Generate sprite"}
+                  {assetBusy ? "Generating…" : assetAnimate ? "Generate animation" : "Generate sprite"}
                 </button>
               </>
             )}
