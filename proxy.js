@@ -9,6 +9,18 @@ import { NextResponse } from "next/server";
 export async function proxy(request) {
   let response = NextResponse.next({ request });
 
+  // Sandboxed game runner: only our own pages may frame it (clickjacking
+  // protection). This is the spec's middleware.ts intent — implemented here
+  // because Next 16 renamed Middleware to Proxy, so a middleware.ts file would
+  // silently never run. We deliberately do NOT set a restrictive script-src so
+  // the runner can still load Phaser from its CDN.
+  const { pathname } = new URL(request.url);
+  if (pathname.startsWith("/game-runner")) {
+    response.headers.set("X-Frame-Options", "SAMEORIGIN");
+    response.headers.set("Content-Security-Policy", "frame-ancestors 'self';");
+    return response;
+  }
+
   const url = process.env.NEXT_PUBLIC_SUPABASE_URL;
   const key = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY;
   // Without Supabase configured there is nothing to refresh.

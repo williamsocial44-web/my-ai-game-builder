@@ -112,6 +112,7 @@ function Icon({ name, className }) {
     copy: <><rect x="9" y="9" width="11" height="11" rx="2" /><path d="M5 15V5a2 2 0 0 1 2-2h8" /></>,
     brain: <><path d="M9 3a3 3 0 0 0-3 3 3 3 0 0 0-1 5.8V15a3 3 0 0 0 4 2.8" /><path d="M9 3a2.5 2.5 0 0 1 3 2.4v12.2A2.5 2.5 0 0 1 9 20" /><path d="M15 3a3 3 0 0 1 3 3 3 3 0 0 1 1 5.8V15a3 3 0 0 1-4 2.8" /></>,
     gauge: <><path d="M12 14a2 2 0 1 0 0-.01" /><path d="m14 12 3-3" /><path d="M4 18a8 8 0 1 1 16 0" /></>,
+    image: <><rect x="3" y="3" width="18" height="18" rx="2" /><circle cx="8.5" cy="8.5" r="1.6" /><path d="m21 15-5-5L5 21" /></>,
   };
   return <svg {...p}>{shapes[name] || shapes.spark}</svg>;
 }
@@ -222,7 +223,7 @@ function QualitySelect({ quality, setQuality }) {
   );
 }
 
-function Composer({ value, onChange, onSubmit, loading, placeholder, compact, quality, setQuality }) {
+function Composer({ value, onChange, onSubmit, loading, placeholder, compact, quality, setQuality, engine, setEngine }) {
   const ref = useRef(null);
   const [focus, setFocus] = useState(false);
 
@@ -257,10 +258,15 @@ function Composer({ value, onChange, onSubmit, loading, placeholder, compact, qu
           <button type="button" className="icon-pill" title="Attach a reference (coming soon)">
             <Icon name="attach" />
           </button>
-          {!compact && (
-            <button type="button" className="icon-pill" title="Visibility">
-              <Icon name="globe" />
-              Public
+          {!compact && setEngine && (
+            <button
+              type="button"
+              className="icon-pill"
+              title="Engine for new builds — HTML (most variety) or Phaser (arcade/maze)"
+              onClick={() => setEngine(engine === "phaser" ? "html" : "phaser")}
+            >
+              <Icon name={engine === "phaser" ? "controller" : "code"} />
+              {engine === "phaser" ? "Phaser" : "HTML"}
               <Icon name="chevron" />
             </button>
           )}
@@ -348,10 +354,22 @@ function Workspace({
   onFeedback,
   quality,
   setQuality,
+  isPremium,
+  onUsePlayer,
 }) {
   const feedRef = useRef(null);
   const codeRef = useRef(null);
   const [shareOpen, setShareOpen] = useState(false);
+
+  // AI sprite/asset generation (fal.ai) + the premium upgrade prompt.
+  const [showAsset, setShowAsset] = useState(false);
+  const [assetPrompt, setAssetPrompt] = useState("");
+  const [assetAnimate, setAssetAnimate] = useState(false);
+  const [assetBusy, setAssetBusy] = useState(false);
+  const [assetNote, setAssetNote] = useState("");
+  const [assetResult, setAssetResult] = useState(null);
+  const [showPaywall, setShowPaywall] = useState(false);
+  const [injecting, setInjecting] = useState(false);
 
   useEffect(() => {
     feedRef.current?.scrollTo({ top: feedRef.current.scrollHeight, behavior: "smooth" });
@@ -407,6 +425,42 @@ function Workspace({
       }
     } else {
       copySource();
+    }
+  }
+
+  // Generate a transparent game sprite (or, for premium, an animated one) via
+  // /api/generate-asset. Degrades cleanly: a missing FAL_KEY shows an inline note,
+  // and the premium-only animation routes to the upgrade prompt.
+  async function generateAsset() {
+    if (assetAnimate && !isPremium) {
+      setShowPaywall(true);
+      return;
+    }
+    const p = assetPrompt.trim();
+    if (!p) return;
+    setAssetBusy(true);
+    setAssetNote("");
+    setAssetResult(null);
+    try {
+      const res = await fetch("/api/generate-asset", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ prompt: p, isAnimated: assetAnimate }),
+      });
+      const data = await res.json().catch(() => ({}));
+      if (res.status === 403 || data?.error === "PAYWALL_TRIGGERED") {
+        setShowPaywall(true);
+        return;
+      }
+      if (!res.ok || !data.url) {
+        setAssetNote(data.error || "Generation failed. Try again.");
+        return;
+      }
+      setAssetResult({ url: data.url, type: data.type });
+    } catch {
+      setAssetNote("Generation failed. Try again.");
+    } finally {
+      setAssetBusy(false);
     }
   }
 
@@ -511,6 +565,9 @@ function Workspace({
             <button type="button" className="tool-btn" onClick={playStandalone} disabled={!html}>
               <Icon name="external" /> Play
             </button>
+            <button type="button" className="tool-btn" onClick={() => setShowAsset(true)} title="Generate a game sprite with AI">
+              <Icon name="image" /> Sprite
+            </button>
             <div className="ws-share">
               <button
                 type="button"
@@ -588,6 +645,156 @@ function Workspace({
           )}
         </div>
       </section>
+
+      {showAsset && (
+        <div className="modal-overlay" onMouseDown={() => setShowAsset(false)}>
+          <div
+            className="modal"
+            role="dialog"
+            aria-modal="true"
+            aria-label="Generate a sprite"
+            onMouseDown={(e) => e.stopPropagation()}
+          >
+            <button className="modal-close" type="button" onClick={() => setShowAsset(false)} aria-label="Close">
+              <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round">
+                <path d="M6 6l12 12M18 6 6 18" />
+              </svg>
+            </button>
+            <div className="modal-logo">
+              <span className="brand-logo"><Icon name="image" /></span>
+            </div>
+            <h2 className="modal-title">Generate a sprite</h2>
+            <p className="modal-sub">Describe an asset and AI makes a transparent, game-ready sprite.</p>
+
+            {assetResult ? (
+              <div style={{ textAlign: "center" }}>
+                {assetResult.type === "video" ? (
+                  <video src={assetResult.url} autoPlay loop muted playsInline style={{ width: "100%", borderRadius: 12, background: "#0a0a0c" }} />
+                ) : (
+                  // eslint-disable-next-line @next/next/no-img-element
+                  <img
+                    src={assetResult.url}
+                    alt="Generated sprite"
+                    style={{
+                      width: 180,
+                      height: 180,
+                      objectFit: "contain",
+                      margin: "0 auto",
+                      display: "block",
+                      background: "repeating-conic-gradient(#26262c 0% 25%, #1a1a20 0% 50%) 50% / 22px 22px",
+                      borderRadius: 12,
+                    }}
+                  />
+                )}
+                <button
+                  type="button"
+                  className="btn btn-primary modal-submit"
+                  style={{ width: "100%", marginTop: 16 }}
+                  disabled={injecting}
+                  onClick={async () => {
+                    setInjecting(true);
+                    try {
+                      await onUsePlayer?.(assetResult.url);
+                      setShowAsset(false);
+                      setAssetResult(null);
+                      setAssetPrompt("");
+                    } finally {
+                      setInjecting(false);
+                    }
+                  }}
+                >
+                  {injecting ? "Injecting…" : "Use as player"}
+                </button>
+                <div style={{ display: "flex", gap: 8, marginTop: 8 }}>
+                  <a
+                    className="btn btn-ghost"
+                    style={{ flex: 1, textAlign: "center", textDecoration: "none" }}
+                    href={assetResult.url}
+                    target="_blank"
+                    rel="noreferrer"
+                    download
+                  >
+                    Download
+                  </a>
+                  <button type="button" className="btn btn-ghost" style={{ flex: 1 }} disabled={injecting} onClick={() => { setAssetResult(null); setAssetPrompt(""); }}>
+                    Make another
+                  </button>
+                </div>
+              </div>
+            ) : (
+              <>
+                <input
+                  type="text"
+                  value={assetPrompt}
+                  onChange={(e) => setAssetPrompt(e.target.value)}
+                  onKeyDown={(e) => { if (e.key === "Enter") generateAsset(); }}
+                  placeholder="e.g. a rusty iron sword"
+                  autoFocus
+                  style={{
+                    width: "100%",
+                    background: "var(--bg-2, #0e0e12)",
+                    border: "1px solid var(--border, rgba(255,255,255,0.12))",
+                    borderRadius: 10,
+                    padding: "11px 13px",
+                    color: "var(--text, #f4f4f6)",
+                    fontSize: 14,
+                    outline: "none",
+                    marginBottom: 12,
+                    boxSizing: "border-box",
+                  }}
+                />
+                <label style={{ display: "flex", alignItems: "center", gap: 8, fontSize: 13, color: "var(--muted, #9a9aa2)", marginBottom: 16, cursor: "pointer" }}>
+                  <input type="checkbox" checked={assetAnimate} onChange={(e) => setAssetAnimate(e.target.checked)} />
+                  Animate sprite <span style={{ color: "var(--coral, #ff7a59)" }}>· Premium</span>
+                </label>
+                {assetNote && <div className="modal-notice">{assetNote}</div>}
+                <button
+                  type="button"
+                  className="btn btn-primary modal-submit"
+                  style={{ width: "100%" }}
+                  onClick={generateAsset}
+                  disabled={assetBusy || !assetPrompt.trim()}
+                >
+                  {assetBusy ? "Generating…" : "Generate sprite"}
+                </button>
+              </>
+            )}
+          </div>
+        </div>
+      )}
+
+      {showPaywall && (
+        <div className="modal-overlay" onMouseDown={() => setShowPaywall(false)}>
+          <div className="modal" role="dialog" aria-modal="true" aria-label="Upgrade to Premium" onMouseDown={(e) => e.stopPropagation()}>
+            <button className="modal-close" type="button" onClick={() => setShowPaywall(false)} aria-label="Close">
+              <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round">
+                <path d="M6 6l12 12M18 6 6 18" />
+              </svg>
+            </button>
+            <div className="modal-logo">
+              <span className="brand-logo"><Icon name="bolt" /></span>
+            </div>
+            <h2 className="modal-title">Unlock Pro features</h2>
+            <p className="modal-sub">Animate sprites with video AI, export clean source, and remove the watermark.</p>
+            <button
+              type="button"
+              className="btn btn-primary modal-submit"
+              style={{ width: "100%" }}
+              onClick={() => { window.location.href = "/api/checkout/stripe"; }}
+            >
+              Upgrade to Premium ($49/mo)
+            </button>
+            <button
+              type="button"
+              className="modal-fine"
+              style={{ background: "none", border: 0, cursor: "pointer", width: "100%", marginTop: 10 }}
+              onClick={() => setShowPaywall(false)}
+            >
+              Keep testing in the free sandbox
+            </button>
+          </div>
+        </div>
+      )}
     </div>
   );
 }
@@ -601,6 +808,35 @@ function stripFences(text) {
     t = t.replace(/^```[a-zA-Z]*\s*\n?/, "").replace(/\n?```\s*$/, "");
   }
   return t.trim();
+}
+
+// A Phaser (declarative-engine) game is wrapped into self-contained HTML with its
+// state embedded as a JSON script tag, so it flows through the same save/preview/
+// publish/export pipeline as a hand-written HTML game. These helpers tell the two
+// apart and recover the declarative state for follow-up edits.
+function isPhaserHtml(html) {
+  return typeof html === "string" && html.includes('id="gc-state"');
+}
+
+function extractPhaserState(html) {
+  const m = (html || "").match(/<script[^>]*id="gc-state"[^>]*>([\s\S]*?)<\/script>/i);
+  if (!m) return null;
+  try {
+    return JSON.parse(m[1]);
+  } catch {
+    return null;
+  }
+}
+
+// Re-embed an updated declarative state into a wrapped Phaser game's HTML so the
+// change persists and the iframe reloads with it. Function replacement avoids
+// `$`-pattern issues in the JSON.
+function embedPhaserState(html, state) {
+  const json = JSON.stringify(state).replace(/<\/script>/gi, "<\\/script>");
+  return html.replace(
+    /(<script[^>]*id="gc-state"[^>]*>)[\s\S]*?(<\/script>)/i,
+    (_m, open, close) => open + json + close
+  );
 }
 
 function safeFileName(value) {
@@ -656,6 +892,9 @@ export default function Home() {
   const [prompt, setPrompt] = useState("");
   const [followup, setFollowup] = useState("");
   const [quality, setQuality] = useState("auto"); // auto | fast | smart
+  const [engine, setEngine] = useState("html"); // html | phaser — engine for NEW builds
+  const [activeEngine, setActiveEngine] = useState("html"); // engine of the open game
+  const [isPremium] = useState(false); // unlocks sprite animation / clean export; wired via Stripe
   const [view, setView] = useState("home"); // home | workspace
   const [html, setHtml] = useState("");
   const [streamCode, setStreamCode] = useState(""); // live HTML as it streams in
@@ -674,6 +913,7 @@ export default function Home() {
   const [feedback, setFeedback] = useState(null); // null | "up" | "down"
   const [publicGames, setPublicGames] = useState([]); // real published games for the showcase
   const planRef = useRef(""); // latest concept text, for naming the saved game
+  const declarativeRef = useRef(null); // current Phaser declarative state, for edits
 
   // Logged out: load games from this browser. Logged in: load from the cloud.
   useEffect(() => {
@@ -761,7 +1001,19 @@ export default function Home() {
     const authError = params.get("auth_error");
     if (authError) {
       setToast(`Sign-in failed: ${authError}`);
+    }
+    // Surface the result of a Stripe checkout round-trip (/api/checkout/stripe).
+    const billing = params.get("billing");
+    const BILLING_MSG = {
+      success: "🎉 You're Premium! Animation and clean export unlocked.",
+      cancelled: "Checkout cancelled — no charge was made.",
+      unconfigured: "Billing isn't set up yet (add your Stripe keys).",
+      error: "Couldn't start checkout. Please try again.",
+    };
+    if (billing && BILLING_MSG[billing]) setToast(BILLING_MSG[billing]);
+    if (authError || billing) {
       params.delete("auth_error");
+      params.delete("billing");
       const qs = params.toString();
       window.history.replaceState({}, "", window.location.pathname + (qs ? `?${qs}` : ""));
     }
@@ -786,7 +1038,7 @@ export default function Home() {
     }, 720);
   }
 
-  async function generate(rawPrompt) {
+  async function generate(rawPrompt, buildEngine = engine) {
     const requestPrompt = (rawPrompt ?? prompt).trim();
     if (!requestPrompt) {
       setError("Describe a game first.");
@@ -803,7 +1055,45 @@ export default function Home() {
     setActiveGenId(null);
     setFeedback(null);
     setLoading(true);
+    setActiveEngine(buildEngine);
     runStepAnimation();
+
+    // Phaser (declarative) builds come back as one self-contained HTML file from
+    // the orchestrator — no token streaming. HTML builds stream below as before.
+    if (buildEngine === "phaser") {
+      try {
+        const res = await fetch("/api/chat", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ message: requestPrompt, quality }),
+        });
+        const data = await res.json().catch(() => ({}));
+        if (!res.ok || !data.html) throw new Error(data?.error || "Generation failed.");
+        declarativeRef.current = data.state?.declarative || null;
+        setPlan(data.summary || "");
+        planRef.current = data.summary || "";
+        setHtml(data.html);
+        setPercent(100);
+        setStepIndex(BUILD_STEPS.length);
+        const savedId = await saveProject({
+          id: crypto?.randomUUID?.() || String(Date.now()),
+          title: data.state?.metadata?.title || deriveTitle(requestPrompt),
+          prompt: requestPrompt,
+          html: data.html,
+          scene: sceneFromPrompt(requestPrompt),
+          engine: "phaser",
+          declarative: data.state?.declarative || null,
+          createdAt: Date.now(),
+        });
+        setActiveGameId(savedId || null);
+      } catch (err) {
+        setError(err.message || "Something went wrong.");
+      } finally {
+        clearStepTimer();
+        setLoading(false);
+      }
+      return;
+    }
 
     // kick off a quick concept in parallel for the chat panel
     planRef.current = "";
@@ -887,7 +1177,7 @@ export default function Home() {
 
   // Iterate on the current game: send its HTML + the change request to the
   // editor, stream the updated file back, and persist it.
-  async function editGame(instruction) {
+  async function editGame(instruction, postProcess) {
     const baseHtml = html;
     if (!baseHtml) return;
     setError("");
@@ -895,6 +1185,46 @@ export default function Home() {
     setHtml("");
     setLoading(true);
     runStepAnimation();
+
+    // Phaser edits route to the declarative orchestrator and come back as one
+    // self-contained HTML file (recover the declarative state to edit against).
+    if (activeEngine === "phaser") {
+      try {
+        const declarative = declarativeRef.current || extractPhaserState(baseHtml);
+        const res = await fetch("/api/chat", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            message: instruction,
+            quality,
+            currentState: declarative
+              ? { engine: "phaser", declarative, metadata: { title: "" } }
+              : undefined,
+          }),
+        });
+        const data = await res.json().catch(() => ({}));
+        if (!res.ok || !data.html) throw new Error(data?.error || "Couldn’t apply that change.");
+        declarativeRef.current = data.state?.declarative || declarative;
+        setHtml(data.html);
+        setPercent(100);
+        setStepIndex(BUILD_STEPS.length);
+        setProjects((prev) =>
+          prev.map((p) =>
+            p.id === activeGameId
+              ? { ...p, html: data.html, declarative: declarativeRef.current }
+              : p
+          )
+        );
+        if (user && activeGameId) updateGameHtml(activeGameId, data.html).catch(() => {});
+      } catch (err) {
+        setError(err.message || "Something went wrong.");
+        setHtml(baseHtml);
+      } finally {
+        clearStepTimer();
+        setLoading(false);
+      }
+      return;
+    }
 
     try {
       const res = await fetch("/api/generate", {
@@ -919,8 +1249,11 @@ export default function Home() {
         setPercent(Math.min(96, 12 + Math.floor(acc.length / 180)));
       }
 
-      const finalHtml = stripFences(acc);
+      let finalHtml = stripFences(acc);
       if (!finalHtml) throw new Error("That change came back empty. Try again.");
+      // Deterministic post-processing (e.g. substituting a Base64 sprite the model
+      // wired to a placeholder token) — keeps huge data out of the model itself.
+      if (postProcess) finalHtml = postProcess(finalHtml);
 
       setHtml(finalHtml);
       setPercent(100);
@@ -953,6 +1286,57 @@ export default function Home() {
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ id: activeGenId, rating }),
     }).catch(() => {});
+  }
+
+  // Inject a generated sprite as the player. The remote (fal) URL is first
+  // proxied to a Base64 data URI server-side so the game stays self-contained
+  // (no CORS taint, no external URLs left in the exported HTML).
+  async function injectPlayerSprite(falUrl) {
+    if (!falUrl) return;
+    let dataUri;
+    try {
+      const res = await fetch("/api/proxy-image", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ imageUrl: falUrl }),
+      });
+      const data = await res.json().catch(() => ({}));
+      if (!res.ok || !data.dataUri) throw new Error(data.error || "Couldn't load the sprite.");
+      dataUri = data.dataUri;
+    } catch (err) {
+      setToast(err.message || "Couldn't load the sprite.");
+      return;
+    }
+
+    if (activeEngine === "phaser") {
+      // Declarative: point the player at the inlined sprite and reload the iframe.
+      const state = declarativeRef.current || extractPhaserState(html);
+      if (!state || !state.player) {
+        setToast("Build a game first, then add a sprite.");
+        return;
+      }
+      state.player = {
+        ...state.player,
+        spriteKey: "player_custom",
+        sprite: { key: "player_custom", url: dataUri },
+      };
+      declarativeRef.current = state;
+      const newHtml = embedPhaserState(html, state);
+      setHtml(newHtml);
+      setProjects((prev) =>
+        prev.map((p) => (p.id === activeGameId ? { ...p, html: newHtml, declarative: state } : p))
+      );
+      if (user && activeGameId) updateGameHtml(activeGameId, newHtml).catch(() => {});
+      setToast("Sprite applied to your player");
+    } else {
+      // HTML: the model wires the player to a placeholder token; we substitute the
+      // real Base64 afterward so the heavy data never goes through the model.
+      await editGame(
+        "Replace the player's drawn shape/sprite with an Image() whose src is exactly the placeholder token __PLAYER_SPRITE_URI__ (I will substitute the real data URI). Draw that image at the player's current position and size every frame. Keep all other gameplay, layout, controls and code unchanged.",
+        (out) => out.split("__PLAYER_SPRITE_URI__").join(dataUri)
+      );
+      setToast("Sprite applied to your player");
+    }
   }
 
   function downloadGame() {
@@ -989,6 +1373,10 @@ export default function Home() {
 
   function openProject(project) {
     setHtml(project.html);
+    const eng = project.engine || (isPhaserHtml(project.html) ? "phaser" : "html");
+    setActiveEngine(eng);
+    declarativeRef.current =
+      project.declarative || (eng === "phaser" ? extractPhaserState(project.html) : null);
     setActivePrompt(project.prompt);
     setActiveGameId(typeof project.id === "string" ? project.id : null);
     setActiveGenId(null);
@@ -1062,7 +1450,7 @@ export default function Home() {
           setFollowup={setFollowup}
           onFollowup={handleFollowup}
           onBack={backHome}
-          onRebuild={() => generate(activePrompt)}
+          onRebuild={() => generate(activePrompt, activeEngine)}
           onDownload={downloadGame}
           onPublish={publishActive}
           onNotify={setToast}
@@ -1071,6 +1459,8 @@ export default function Home() {
           onFeedback={submitFeedback}
           quality={quality}
           setQuality={setQuality}
+          isPremium={isPremium}
+          onUsePlayer={injectPlayerSprite}
         />
         {toast && <div className="toast">{toast}</div>}
       </>
@@ -1182,6 +1572,8 @@ export default function Home() {
             placeholder="Ask Gamecraft to build a game…  e.g. a neon snake with boss rounds"
             quality={quality}
             setQuality={setQuality}
+            engine={engine}
+            setEngine={setEngine}
           />
         </div>
 
