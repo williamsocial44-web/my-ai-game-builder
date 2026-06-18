@@ -42,6 +42,13 @@ const FORCED_EFFORT = process.env.GENERATE_EFFORT || null; // low|medium|high|xh
 const PLAN_MODEL = process.env.PLAN_MODEL || "claude-haiku-4-5-20251001";
 const MOCK_MODE = false;
 
+// DEV_MODE stubs ALL model calls (plan/generate/edit) with canned responses so
+// UI/flow testing burns zero API credits. Enable with DEV_MODE=true in .env.local.
+const DEV_MODE = process.env.DEV_MODE === "true";
+const DEV_MOCK_PLAN =
+  "Dev Mock\nMove a square to grab the dots.\nFlat neon test scene.\nArrow keys to move.\nCollect everything to win.";
+const DEV_MOCK_GAME = `<!doctype html><html><head><meta charset="utf-8"><style>html,body{margin:0;height:100%;background:#0b0d12;color:#9fe;font-family:system-ui;display:flex;align-items:center;justify-content:center;text-align:center}</style></head><body><div><h1 style="margin:0 0 8px">DEV_MODE mock</h1><p>No Anthropic call was made.</p><button id="startBtn">Start</button></div><script>document.getElementById('startBtn').addEventListener('click',function(){document.body.style.background='#10212a';});</script></body></html>`;
+
 // Map a complexity score to a model + effort + whether to think first.
 // Cost-tuned: the pricey Opus path is reserved for the genuinely hardest
 // builds (3D worlds, deep multi-system games — score >= 4). The broad middle
@@ -307,6 +314,13 @@ export async function POST(request) {
         : body?.mode === "edit"
           ? "edit"
           : "generate";
+
+    // DEV_MODE short-circuit: never touch Anthropic during UI/flow testing.
+    if (DEV_MODE) {
+      console.warn("DEV_MODE active — returning a mock build (no Anthropic call).");
+      if (mode === "plan") return Response.json({ plan: DEV_MOCK_PLAN, engine: "mock" });
+      return htmlOnceResponse(DEV_MOCK_GAME);
+    }
 
     // Edit mode tweaks an existing game instead of describing a new one. It
     // does its own rate-limit check after validating its inputs.

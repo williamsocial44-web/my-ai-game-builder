@@ -26,13 +26,19 @@ const DEFAULT_DIMENSION = 512; // standard sprites/icons
 const SCHNELL_STEPS = 4; // flux/schnell is designed for ~4 steps
 const HIGH_STEPS = 28;
 const MAX_PROMPT_CHARS = 200;
+const MAX_RETRIES = 2;
+
+// DEV_MODE stubs the pipeline so UI testing never spends on fal.
+const DEV_MODE = process.env.DEV_MODE === "true";
 
 // Defensive denylist: a video/animation model must NEVER be hit on the image path,
 // regardless of env misconfiguration.
 const VIDEO_MODEL_DENYLIST = /(wan|kling|ltx|veo|sora|i2v|video|animate|minimax|hunyuan|runway)/i;
 
 // Light in-process burst limiter so a runaway client can't rack up spend.
-const RATE = { windowMs: 60_000, max: 12 };
+// Sized to allow one full asset-pack (12-16 sprites) in a burst, but still cap
+// a truly runaway loop.
+const RATE = { windowMs: 60_000, max: 40 };
 const recentHits: number[] = [];
 function rateLimited(): boolean {
   const now = Date.now();
@@ -54,7 +60,8 @@ interface FalVideoResult {
 // but we never loop — an unstable network must not silently burn credits.
 async function falRun<T>(model: string, input: Record<string, unknown>): Promise<T> {
   let lastErr: Error | null = null;
-  for (let attempt = 0; attempt < 2; attempt++) {
+  for (let attempt = 0; attempt <= MAX_RETRIES; attempt++) {
+    if (attempt > 0) console.warn(`Retry attempt ${attempt} of ${MAX_RETRIES} (fal ${model})`);
     try {
       const res = await fetch(`https://fal.run/${model}`, {
         method: "POST",
@@ -63,14 +70,15 @@ async function falRun<T>(model: string, input: Record<string, unknown>): Promise
       });
       if (res.ok) return (await res.json()) as T;
       const detail = await res.text().catch(() => "");
-      if (res.status >= 500 && attempt === 0) {
+      // fal doesn't bill 5xx — safe to retry; 4xx is our fault, so fail fast.
+      if (res.status >= 500 && attempt < MAX_RETRIES) {
         lastErr = new Error(`fal ${res.status}`);
-        continue; // retry once on server error
+        continue;
       }
       throw new Error(`fal ${model} failed (${res.status}): ${detail.slice(0, 200)}`);
     } catch (e) {
       lastErr = e as Error;
-      if (attempt === 0) continue; // retry once on network error
+      if (attempt < MAX_RETRIES) continue; // retry on network error
       throw lastErr;
     }
   }
@@ -116,6 +124,12 @@ async function resolvePremium(): Promise<boolean> {
 }
 
 export async function POST(req: Request) {
+  if (DEV_MODE) {
+    // 1x1 transparent PNG — zero fal spend while testing the UI flow.
+    const px =
+      "data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mNk+M9QDwADhgGAWjR9awAAAABJRU5ErkJggg==";
+    return NextResponse.json({ url: px, type: "image", dev: true });
+  }
   if (!FAL_KEY) {
     return NextResponse.json(
       { error: "Asset generation isn't configured yet. Add FAL_KEY to .env.local to enable it.", configured: false },

@@ -356,6 +356,7 @@ function Workspace({
   setQuality,
   isPremium,
   onUsePlayer,
+  onBuildPack,
 }) {
   const feedRef = useRef(null);
   const codeRef = useRef(null);
@@ -373,6 +374,18 @@ function Workspace({
   const [assetHighQuality, setAssetHighQuality] = useState(false);
   const busyRef = useRef(false); // hard debounce: blocks concurrent generate calls
   const lastGenRef = useRef(null); // dedup cache: { sig, result } of the last generation
+
+  // Asset-pack generator: idea -> cohesive full sheet -> Claude builds the game.
+  const [showPack, setShowPack] = useState(false);
+  const [packIdea, setPackIdea] = useState("");
+  const [packBusy, setPackBusy] = useState(false);
+  const [packStatus, setPackStatus] = useState("");
+  const [packError, setPackError] = useState("");
+  const [packSheet, setPackSheet] = useState(""); // composed sheet data URL
+  const [packGame, setPackGame] = useState(null); // planned GameStateConfig
+  const [packMap, setPackMap] = useState(null); // { key: { dataUri, role } }
+  const [packTheme, setPackTheme] = useState("");
+  const packBusyRef = useRef(false);
 
   useEffect(() => {
     feedRef.current?.scrollTo({ top: feedRef.current.scrollHeight, behavior: "smooth" });
@@ -492,6 +505,78 @@ function Workspace({
     }
   }
 
+  // Plan a cohesive asset pack from the game idea, generate every sprite in one
+  // locked style, and compose a preview sheet. "Build playable game" then injects
+  // these textures into the planned game and hands it to onBuildPack.
+  async function generatePack() {
+    if (packBusyRef.current) return;
+    const idea = (packIdea || "").trim();
+    if (!idea) return;
+    packBusyRef.current = true;
+    setPackBusy(true);
+    setPackError("");
+    setPackSheet("");
+    setPackGame(null);
+    setPackMap(null);
+    try {
+      setPackStatus("Planning the asset list…");
+      const plan = await (
+        await fetch("/api/asset-plan", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ idea }),
+        })
+      ).json();
+      if (!plan.assets || !plan.game) throw new Error(plan.error || "Couldn't plan the pack.");
+
+      const assets = plan.assets.slice(0, 16);
+      const map = {};
+      async function inBatches(items, size, fn) {
+        for (let i = 0; i < items.length; i += size) {
+          await Promise.all(items.slice(i, i + size).map(fn));
+          setPackStatus(`Generated ${Object.keys(map).length}/${items.length} assets in one style…`);
+        }
+      }
+      setPackStatus(`Generating ${assets.length} assets in one style…`);
+      await inBatches(assets, 6, async (a) => {
+        try {
+          const r = await (
+            await fetch("/api/generate-asset", {
+              method: "POST",
+              headers: { "Content-Type": "application/json" },
+              body: JSON.stringify({ prompt: `${a.prompt}, ${plan.styleSuffix}`, quality: "budget" }),
+            })
+          ).json();
+          if (!r.url) return;
+          const p = await (
+            await fetch("/api/proxy-image", {
+              method: "POST",
+              headers: { "Content-Type": "application/json" },
+              body: JSON.stringify({ imageUrl: r.url }),
+            })
+          ).json();
+          if (p.dataUri) map[a.key] = { dataUri: p.dataUri, role: a.role };
+        } catch {
+          /* skip a failed asset; the pack still composes from the rest */
+        }
+      });
+      if (!Object.keys(map).length) throw new Error("No assets generated — is FAL_KEY set?");
+
+      setPackStatus("Composing the sheet…");
+      const sheet = await composeAssetSheet(assets, map);
+      setPackMap(map);
+      setPackGame(plan.game);
+      setPackTheme(plan.theme || "");
+      setPackSheet(sheet);
+      setPackStatus("");
+    } catch (err) {
+      setPackError(err.message || "Pack generation failed.");
+    } finally {
+      packBusyRef.current = false;
+      setPackBusy(false);
+    }
+  }
+
   const canShareDevice = typeof navigator !== "undefined" && !!navigator.share;
 
   return (
@@ -595,6 +680,14 @@ function Workspace({
             </button>
             <button type="button" className="tool-btn" onClick={() => setShowAsset(true)} title="Generate a game sprite with AI">
               <Icon name="image" /> Sprite
+            </button>
+            <button
+              type="button"
+              className="tool-btn"
+              onClick={() => { setPackIdea(userPrompt || ""); setShowPack(true); }}
+              title="Generate a full asset pack, then build the game from it"
+            >
+              <Icon name="grid" /> Pack
             </button>
             <div className="ws-share">
               <button
@@ -800,6 +893,70 @@ function Workspace({
         </div>
       )}
 
+      {showPack && (
+        <div className="modal-overlay" onMouseDown={() => { if (!packBusy) setShowPack(false); }}>
+          <div
+            className="modal"
+            role="dialog"
+            aria-modal="true"
+            aria-label="AI asset pack"
+            style={{ maxWidth: 560, width: "92vw" }}
+            onMouseDown={(e) => e.stopPropagation()}
+          >
+            <button className="modal-close" type="button" onClick={() => { if (!packBusy) setShowPack(false); }} aria-label="Close">
+              <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round">
+                <path d="M6 6l12 12M18 6 6 18" />
+              </svg>
+            </button>
+            <div className="modal-logo"><span className="brand-logo"><Icon name="grid" /></span></div>
+            <h2 className="modal-title">AI asset pack</h2>
+            <p className="modal-sub">Describe the game — Claude plans every asset, generates them in one locked style, then builds the game from them.</p>
+
+            {packSheet ? (
+              <div style={{ textAlign: "center" }}>
+                {/* eslint-disable-next-line @next/next/no-img-element */}
+                <img src={packSheet} alt="generated asset sheet" style={{ width: "100%", borderRadius: 12, border: "1px solid var(--border, #333)" }} />
+                <div style={{ fontSize: 12, color: "var(--dim, #8a8f9c)", margin: "8px 0 14px" }}>
+                  {packTheme ? `"${packTheme}" · ` : ""}{packMap ? Object.keys(packMap).length : 0} assets · one locked style
+                </div>
+                <button
+                  type="button"
+                  className="btn btn-primary modal-submit"
+                  style={{ width: "100%" }}
+                  onClick={() => { const game = injectPackSprites(packGame, packMap); setShowPack(false); onBuildPack?.(game); }}
+                >
+                  Build playable game from this pack
+                </button>
+                <button type="button" className="btn btn-ghost" style={{ width: "100%", marginTop: 8 }} onClick={() => { setPackSheet(""); setPackGame(null); setPackMap(null); }}>
+                  Start over
+                </button>
+              </div>
+            ) : (
+              <>
+                <input
+                  type="text"
+                  value={packIdea}
+                  onChange={(e) => setPackIdea(e.target.value)}
+                  onKeyDown={(e) => { if (e.key === "Enter") generatePack(); }}
+                  placeholder="e.g. a dark fantasy dungeon crawler"
+                  disabled={packBusy}
+                  style={{ width: "100%", background: "var(--bg-2, #0e0e12)", border: "1px solid var(--border, rgba(255,255,255,0.12))", borderRadius: 10, padding: "11px 13px", color: "var(--text, #f4f4f6)", fontSize: 14, outline: "none", marginBottom: 12, boxSizing: "border-box" }}
+                />
+                {packError && <div className="modal-notice">{packError}</div>}
+                {packBusy && (
+                  <div style={{ fontSize: 13, color: "var(--muted, #9a9aa2)", marginBottom: 12, display: "flex", alignItems: "center", gap: 8 }}>
+                    <span className="spinner" style={{ width: 16, height: 16 }} /> {packStatus || "Working…"}
+                  </div>
+                )}
+                <button type="button" className="btn btn-primary modal-submit" style={{ width: "100%" }} onClick={generatePack} disabled={packBusy || !packIdea.trim()}>
+                  {packBusy ? "Generating…" : "Generate asset pack"}
+                </button>
+              </>
+            )}
+          </div>
+        </div>
+      )}
+
       {showPaywall && (
         <div className="modal-overlay" onMouseDown={() => setShowPaywall(false)}>
           <div className="modal" role="dialog" aria-modal="true" aria-label="Upgrade to Premium" onMouseDown={(e) => e.stopPropagation()}>
@@ -874,6 +1031,75 @@ function embedPhaserState(html, state) {
     /(<script[^>]*id="gc-state"[^>]*>)[\s\S]*?(<\/script>)/i,
     (_m, open, close) => open + json + close
   );
+}
+
+// Compose the generated asset pack into a single preview "sheet" PNG (a labeled
+// grid on a transparency checkerboard) entirely client-side. `map` is
+// { key: { dataUri, role } }.
+function composeAssetSheet(assets, map) {
+  const entries = assets.filter((a) => map[a.key]);
+  return new Promise((resolve) => {
+    Promise.all(
+      entries.map(
+        (a) =>
+          new Promise((res) => {
+            const img = new Image();
+            img.onload = () => res({ a, img });
+            img.onerror = () => res({ a, img: null });
+            img.src = map[a.key].dataUri;
+          })
+      )
+    ).then((imgs) => {
+      const cell = 140, pad = 16, label = 20, cols = 4;
+      const rows = Math.max(1, Math.ceil(imgs.length / cols));
+      const cv = document.createElement("canvas");
+      cv.width = cols * cell + pad * 2;
+      cv.height = rows * (cell + label) + pad * 2;
+      const ctx = cv.getContext("2d");
+      ctx.fillStyle = "#12141c";
+      ctx.fillRect(0, 0, cv.width, cv.height);
+      imgs.forEach(({ a, img }, idx) => {
+        const c = idx % cols, r = Math.floor(idx / cols);
+        const x = pad + c * cell, y = pad + r * (cell + label);
+        for (let yy = 0; yy < cell; yy += 18)
+          for (let xx = 0; xx < cell; xx += 18) {
+            ctx.fillStyle = (xx / 18 + yy / 18) % 2 ? "#262934" : "#1d2029";
+            ctx.fillRect(x + xx, y + yy, 18, 18);
+          }
+        if (img) ctx.drawImage(img, x + 10, y + 10, cell - 20, cell - 20);
+        ctx.fillStyle = "#cfd3dc";
+        ctx.font = "11px system-ui";
+        ctx.textAlign = "center";
+        ctx.fillText((a.key || "").slice(0, 16), x + cell / 2, y + cell + 13);
+      });
+      resolve(cv.toDataURL("image/png"));
+    });
+  });
+}
+
+// Inject the generated (Base64) sprites into the planned GameStateConfig by key,
+// so the Phaser engine renders the actual pack art. Returns a new config.
+function injectPackSprites(game, map) {
+  const g = JSON.parse(JSON.stringify(game));
+  const uri = (k) => (k && map[k] ? map[k].dataUri : null);
+  if (g.player) {
+    const k = (g.player.sprite && g.player.sprite.key) || g.player.spriteKey;
+    if (uri(k)) g.player.sprite = { key: k, url: uri(k) };
+  }
+  if (g.map && g.map.wallSprite && uri(g.map.wallSprite.key)) {
+    g.map.wallSprite.url = uri(g.map.wallSprite.key);
+  }
+  (g.collectibles || []).forEach((c) => {
+    const k = (c.sprite && c.sprite.key) || c.spriteKey;
+    if (uri(k)) c.sprite = { key: k, url: uri(k) };
+  });
+  (g.enemies || []).forEach((e) => {
+    const k = (e.sprite && e.sprite.key) || e.spriteKey;
+    if (uri(k)) e.sprite = { key: k, url: uri(k) };
+  });
+  // Preload every generated asset as a texture too.
+  g.sprites = Object.keys(map).map((k) => ({ key: k, url: map[k].dataUri }));
+  return g;
 }
 
 function safeFileName(value) {
@@ -1376,6 +1602,51 @@ export default function Home() {
     }
   }
 
+  // Build a playable Phaser game from an assembled asset pack (sprites already
+  // injected into the config). No model call — the server just validates + wraps.
+  async function buildFromPack(game) {
+    setView("workspace");
+    setError("");
+    setStreamCode("");
+    setHtml("");
+    setLoading(true);
+    setActiveEngine("phaser");
+    runStepAnimation();
+    try {
+      const res = await fetch("/api/chat", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ prebuiltGame: game }),
+      });
+      const data = await res.json().catch(() => ({}));
+      if (!res.ok || !data.html) throw new Error(data?.error || "Couldn't build the game.");
+      declarativeRef.current = data.state?.declarative || game;
+      const title = game?.gameMetadata?.title || "Asset Pack Game";
+      setPlan(`Built "${title}" from your generated asset pack.`);
+      planRef.current = title;
+      setHtml(data.html);
+      setPercent(100);
+      setStepIndex(BUILD_STEPS.length);
+      const savedId = await saveProject({
+        id: crypto?.randomUUID?.() || String(Date.now()),
+        title,
+        prompt: activePrompt || "asset pack game",
+        html: data.html,
+        scene: sceneFromPrompt(activePrompt || title),
+        engine: "phaser",
+        declarative: declarativeRef.current,
+        createdAt: Date.now(),
+      });
+      setActiveGameId(savedId || null);
+      setToast("Game built from your asset pack");
+    } catch (err) {
+      setError(err.message || "Something went wrong.");
+    } finally {
+      clearStepTimer();
+      setLoading(false);
+    }
+  }
+
   function downloadGame() {
     if (!html) return;
     const blob = new Blob([html], { type: "text/html;charset=utf-8" });
@@ -1498,6 +1769,7 @@ export default function Home() {
           setQuality={setQuality}
           isPremium={isPremium}
           onUsePlayer={injectPlayerSprite}
+          onBuildPack={buildFromPack}
         />
         {toast && <div className="toast">{toast}</div>}
       </>

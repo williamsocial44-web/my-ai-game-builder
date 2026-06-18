@@ -6,6 +6,9 @@ import type { GameStateConfig, PhaserProjectState, ProjectState } from "@/types/
 
 export const runtime = "nodejs";
 
+// DEV_MODE returns a canned game so UI/flow testing never calls Anthropic.
+const DEV_MODE = process.env.DEV_MODE === "true";
+
 /**
  * Claude state-orchestration endpoint for the DECLARATIVE (Phaser) engine.
  *
@@ -115,16 +118,59 @@ async function wrapPhaserHtml(game: GameStateConfig): Promise<string> {
 }
 
 export async function POST(req: Request) {
-  let body: { message?: string; currentState?: ProjectState; quality?: string };
+  let body: { message?: string; currentState?: ProjectState; quality?: string; prebuiltGame?: GameStateConfig };
   try {
     body = await req.json();
   } catch {
     return NextResponse.json({ error: "Invalid request body." }, { status: 400 });
   }
 
+  // Build directly from a client-assembled game (asset-pack flow): the sprites
+  // are already injected, so just validate + wrap — no model call.
+  if (body.prebuiltGame) {
+    try {
+      const game = clampLayout(body.prebuiltGame);
+      const state: PhaserProjectState = {
+        engine: "phaser",
+        metadata: { title: game.gameMetadata?.title || "Untitled Game", description: game.gameMetadata?.description },
+        declarative: game,
+      };
+      const html = await wrapPhaserHtml(game);
+      return NextResponse.json({ state, html, summary: "Built from your asset pack." });
+    } catch (e) {
+      return NextResponse.json({ error: (e as Error).message }, { status: 400 });
+    }
+  }
+
   const message = (body.message || "").trim();
   if (!message) {
     return NextResponse.json({ error: "Describe a change first." }, { status: 400 });
+  }
+
+  if (DEV_MODE) {
+    const game: GameStateConfig = {
+      gameMetadata: { title: "Dev Mock" },
+      player: { spriteKey: "default_player", startX: 120, startY: 120, speed: 200 },
+      map: {
+        tileGridSize: 40,
+        background: "#0e1118",
+        layout: [
+          [2, 2, 2, 2, 2],
+          [2, 1, 1, 1, 2],
+          [2, 1, 3, 1, 2],
+          [2, 1, 1, 1, 2],
+          [2, 2, 2, 2, 2],
+        ] as GameStateConfig["map"]["layout"],
+      },
+      settings: { gravityY: 0, winCondition: "collect-all" },
+    };
+    const state: PhaserProjectState = {
+      engine: "phaser",
+      metadata: { title: game.gameMetadata.title },
+      declarative: game,
+    };
+    const html = await wrapPhaserHtml(game);
+    return NextResponse.json({ state, html, summary: "DEV_MODE mock — no Anthropic call." });
   }
 
   let anthropic;
