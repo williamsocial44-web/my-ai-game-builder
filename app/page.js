@@ -357,6 +357,7 @@ function Workspace({
   isPremium,
   onUsePlayer,
   onBuildPack,
+  styleSuffix,
 }) {
   const feedRef = useRef(null);
   const codeRef = useRef(null);
@@ -385,6 +386,7 @@ function Workspace({
   const [packGame, setPackGame] = useState(null); // planned GameStateConfig
   const [packMap, setPackMap] = useState(null); // { key: { dataUri, role } }
   const [packTheme, setPackTheme] = useState("");
+  const [packStyle, setPackStyle] = useState(""); // the pack's locked styleSuffix
   const packBusyRef = useRef(false);
 
   useEffect(() => {
@@ -458,7 +460,7 @@ function Workspace({
 
     // Dedup: an identical request (same prompt + settings) reuses the last result
     // instead of re-billing fal.
-    const sig = `${p}|${assetAnimate ? "anim" : "static"}|${assetHighQuality ? "high" : "budget"}`;
+    const sig = `${p}|${assetAnimate ? "anim" : "static"}|${assetHighQuality ? "high" : "budget"}|${styleSuffix || ""}`;
     if (lastGenRef.current && lastGenRef.current.sig === sig) {
       setAssetResult(lastGenRef.current.result);
       setAssetNote("");
@@ -474,7 +476,7 @@ function Workspace({
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
-          prompt: p,
+          prompt: styleSuffix ? `${p}, ${styleSuffix}` : p,
           quality: assetHighQuality ? "high" : "budget",
           isAnimated: assetAnimate,
           // The unchecked-by-default "Animate" checkbox IS the explicit video consent.
@@ -567,6 +569,7 @@ function Workspace({
       setPackMap(map);
       setPackGame(plan.game);
       setPackTheme(plan.theme || "");
+      setPackStyle(plan.styleSuffix || "");
       setPackSheet(sheet);
       setPackStatus("");
     } catch (err) {
@@ -923,7 +926,7 @@ function Workspace({
                   type="button"
                   className="btn btn-primary modal-submit"
                   style={{ width: "100%" }}
-                  onClick={() => { const game = injectPackSprites(packGame, packMap); setShowPack(false); onBuildPack?.(game); }}
+                  onClick={() => { const game = injectPackSprites(packGame, packMap); setShowPack(false); onBuildPack?.(game, packStyle); }}
                 >
                   Build playable game from this pack
                 </button>
@@ -1099,6 +1102,16 @@ function injectPackSprites(game, map) {
   });
   // Preload every generated asset as a texture too.
   g.sprites = Object.keys(map).map((k) => ({ key: k, url: map[k].dataUri }));
+  // Defaults so tile-grid (code 3/4) spawns use the generated pack art.
+  const roles = {};
+  Object.keys(map).forEach((k) => {
+    const role = map[k].role || "prop";
+    (roles[role] = roles[role] || []).push(k);
+  });
+  g.defaults = {
+    collectibleKey: (roles.collectible && roles.collectible[0]) || null,
+    enemyKey: (roles.enemy && roles.enemy[0]) || null,
+  };
   return g;
 }
 
@@ -1158,6 +1171,7 @@ export default function Home() {
   const [engine, setEngine] = useState("html"); // html | phaser — engine for NEW builds
   const [activeEngine, setActiveEngine] = useState("html"); // engine of the open game
   const [isPremium] = useState(false); // unlocks sprite animation / clean export; wired via Stripe
+  const [activeStyle, setActiveStyle] = useState(""); // locked style of the current pack-built game
   const [view, setView] = useState("home"); // home | workspace
   const [html, setHtml] = useState("");
   const [streamCode, setStreamCode] = useState(""); // live HTML as it streams in
@@ -1319,6 +1333,7 @@ export default function Home() {
     setFeedback(null);
     setLoading(true);
     setActiveEngine(buildEngine);
+    setActiveStyle("");
     runStepAnimation();
 
     // Phaser (declarative) builds come back as one self-contained HTML file from
@@ -1604,7 +1619,8 @@ export default function Home() {
 
   // Build a playable Phaser game from an assembled asset pack (sprites already
   // injected into the config). No model call — the server just validates + wraps.
-  async function buildFromPack(game) {
+  async function buildFromPack(game, styleSuffix) {
+    setActiveStyle(styleSuffix || "");
     setView("workspace");
     setError("");
     setStreamCode("");
@@ -1683,6 +1699,7 @@ export default function Home() {
     setHtml(project.html);
     const eng = project.engine || (isPhaserHtml(project.html) ? "phaser" : "html");
     setActiveEngine(eng);
+    setActiveStyle("");
     declarativeRef.current =
       project.declarative || (eng === "phaser" ? extractPhaserState(project.html) : null);
     setActivePrompt(project.prompt);
@@ -1770,6 +1787,7 @@ export default function Home() {
           isPremium={isPremium}
           onUsePlayer={injectPlayerSprite}
           onBuildPack={buildFromPack}
+          styleSuffix={activeStyle}
         />
         {toast && <div className="toast">{toast}</div>}
       </>

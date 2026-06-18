@@ -246,6 +246,7 @@
         }
 
         var map = config.map || { tileGridSize: 32, layout: [] };
+        var defaults = config.defaults || {};
         var layout = Array.isArray(map.layout) ? map.layout : [];
         var tile = map.tileGridSize || 32;
         var rows = layout.length || 1;
@@ -302,7 +303,7 @@
           );
         });
         tileCollectibles.forEach(function (c) {
-          self.spawnCollectible(c.x, c.y, null, 1, cSize);
+          self.spawnCollectible(c.x, c.y, defaults.collectibleKey || null, 1, cSize);
         });
 
         // Enemies (explicit list + tile spawns).
@@ -310,7 +311,12 @@
           self.spawnEnemy(e.startX, e.startY, e, tile);
         });
         tileEnemies.forEach(function (e) {
-          self.spawnEnemy(e.x, e.y, { behavior: "patrol", speed: 90 }, tile);
+          self.spawnEnemy(
+            e.x,
+            e.y,
+            { behavior: "patrol", speed: 90, sprite: defaults.enemyKey ? { key: defaults.enemyKey } : null },
+            tile
+          );
         });
 
         // Goal zone for reach-goal games.

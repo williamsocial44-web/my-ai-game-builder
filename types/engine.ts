@@ -100,6 +100,9 @@ export interface GameStateConfig {
   settings?: GameSettings;
   /** Extra sprite definitions to preload (e.g. generated assets). */
   sprites?: SpriteRef[];
+  /** Default sprite keys for tile-grid (code 3/4) spawns, so grid-placed
+   *  collectibles/enemies use the generated pack art instead of a flat color. */
+  defaults?: { collectibleKey?: string | null; enemyKey?: string | null };
 }
 
 /* ───────────────────────────── Project state union ───────────────────────── */
